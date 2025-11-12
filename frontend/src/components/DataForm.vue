@@ -19,7 +19,7 @@ export default {
   methods: {
     async sendData() {
       try {
-        const response = await axios.post('http://127.0.0.1:5000/api/process', {
+        const response = await axios.post('http://127.0.0.1:5001/api/process', {
           data: this.inputData,
         });
         this.responseMessage = response.data.message;

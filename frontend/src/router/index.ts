@@ -5,6 +5,7 @@ import UserPage from '@/views/UserPage.vue'
 import PublishPage from '@/views/PublishPage.vue'
 import WorkflowPage from '@/views/WorkflowPage.vue'
 import AgentPage from '@/views/AgentPage.vue'
+import ImageManagement from '@/views/ImageManagement.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -42,8 +43,13 @@ const router = createRouter({
       path: '/agent',
       name: 'agent',
       component: AgentPage
+    },
+    {
+      path: '/images',
+      name: 'images',
+      component: ImageManagement
     }
   ]
 })
 
-export default router 
+export default router

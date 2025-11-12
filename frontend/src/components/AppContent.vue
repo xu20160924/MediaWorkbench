@@ -1,7 +1,7 @@
 <template>
-  <div>
+  <div class="app-container">
     <header class="header">
-      <h1>小红书自动生成</h1>
+      <h1>AI 自动化平台</h1>
       <div class="status-container">
         <div class="service-status" :class="{ 'is-error': !serviceAvailable }">
           {{ serviceAvailable ? '服务正常' : '服务不可用' }}
@@ -12,7 +12,9 @@
       </div>
     </header>
     <div class="main-container">
-      <NavMenu />
+      <div class="menu-container">
+        <NavMenu />
+      </div>
       <div class="content">
         <router-view></router-view>
       </div>
@@ -39,7 +41,7 @@ export default defineComponent({
     const comfyuiRunning = ref(false)
     
     const updateTitle = (routeName: string) => {
-      const baseTitle = '小红书自动生成'
+      const baseTitle = 'AI 自动化平台'
       const pageTitles: Record<string, string> = {
         '/theme': '主题',
         '/generate': '生成',
@@ -96,11 +98,19 @@ export default defineComponent({
 </script>
 
 <style scoped>
+.app-container {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background-color: #f5f5f5;
+}
+
 .header {
   background: linear-gradient(135deg, #27ff00 0%, #0077ff 100%);
-  padding: 1.2rem;
+  padding: 1rem 1.2rem 1.2rem 1.2rem;
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
   position: relative;
+  margin-bottom: 0.5rem;
 }
 
 .status-container {
@@ -139,32 +149,46 @@ h1 {
 .main-container {
   flex: 1;
   display: flex;
-  gap: 1rem;
-  padding: 1.5rem;
-  max-width: 1400px;
-  margin: 0 auto;
+  gap: 1.5rem;
+  padding: 1rem 1.5rem 1.5rem 1.5rem;
   width: 100%;
+  margin: 0;
   box-sizing: border-box;
+  max-width: 100%;
+}
+
+.menu-container {
+  flex: 0 0 auto;
+  padding-left: 1rem;
 }
 
 .content {
   flex: 1;
   border-radius: 12px;
-  padding: 1.5rem;
+  padding: 0;
   background-color: white;
   box-shadow: 0 2px 12px rgba(0,0,0,0.08);
   transition: all 0.3s ease;
-  max-width: 70rem;
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 @media (max-width: 768px) {
   .main-container {
     flex-direction: column;
-    padding: 1rem;
+    padding: 0.5rem;
+    gap: 0.5rem;
+  }
+  
+  .menu-container {
+    padding: 0.5rem 0.5rem 0 0.5rem;
+    width: 100%;
+    box-sizing: border-box;
   }
   
   .content {
-    padding: 1rem;
+    border-radius: 8px;
   }
 
   .status-container {

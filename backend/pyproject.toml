@@ -5,18 +5,41 @@ description = "小红书图文发布自动化"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    # Core
     "flask>=3.1.0",
     "flask-cors>=5.0.0",
-    "pathlib>=1.0.1",
-    "pillow==10.2.0",
-    "playwright>=1.49.1",
-    "requests-toolbelt==1.0.0",
-    "requests>=2.32.3",
-    "xhs>=0.2.13",
-    "websocket-client==1.7.0",
-    "openai>=1.57.4",
     "flask-sqlalchemy>=3.1.1",
+    "flask-migrate>=4.1.0",
+    "sqlalchemy>=2.0.0",
+    "alembic>=1.13.1",
+    
+    # Web & API
     "aiohttp>=3.11.11",
+    "requests>=2.32.3",
+    "requests-toolbelt==1.0.0",
+    "websocket-client==1.7.0",
+    
+    # Image Processing
+    "pillow>=10.2.0",
+    
+    # Web Automation
+    "playwright>=1.49.1",
+    
+    # Utilities
     "python-dotenv>=1.0.1",
+    "pathlib>=1.0.1",
     "apscheduler>=3.11.0",
+    "pydantic>=2.0.0",
+    
+    # AI/ML
+    "openai>=1.57.4",
+    
+    # Platform Specific
+    "xhs>=0.2.13",
+    
+    # Development
+    "black>=24.0.0",
+    "flake8>=7.0.0",
+    "mypy>=1.8.0",
+    "pytest>=8.0.0",
 ]

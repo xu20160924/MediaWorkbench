@@ -177,3 +177,7 @@ cython_debug/
 /frontend/public/image
 /frontend/.vscode
 /frontend/README.md
+
+.DS_Store
+package-lock.json
+app.db

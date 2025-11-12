@@ -1,5 +1,10 @@
 from datetime import datetime
+from enum import Enum
 from app.extensions import db
+
+class ImageSource(Enum):
+    UPLOAD = 'upload'
+    LOCAL_DIR = 'local_dir'
 
 class Image(db.Model):
     __tablename__ = 'images'
@@ -11,6 +16,8 @@ class Image(db.Model):
     file_path = db.Column(db.String(255), nullable=False)
     workflow_id = db.Column(db.Integer, db.ForeignKey('workflows.id'))
     variables = db.Column(db.JSON)
+    source = db.Column(db.Enum(ImageSource), default=ImageSource.UPLOAD, nullable=False)
+    local_path = db.Column(db.String(500), nullable=True)  # Only used when source is LOCAL_DIR
     
     # 修改关系定义，指定正确的表名
     workflow = db.relationship('Workflow', 
@@ -25,5 +32,7 @@ class Image(db.Model):
             'workflow_id': self.workflow_id,
             'created_at': self.created_at.isoformat(),
             'file_path': self.file_path,
-            'variables': self.variables
-        } 
+            'variables': self.variables,
+            'source': self.source.value,
+            'local_path': self.local_path
+        }

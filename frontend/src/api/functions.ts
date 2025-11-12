@@ -63,11 +63,29 @@ export const generateImage = async (params: GenerateImageParams): Promise<ApiRes
   return request.post<any, ApiResponse<GenerateImageResponse>>('/api/generate-image', params)
 }
 
-export const listImages = async (params?: ListImagesParams): Promise<ApiResponse<ListImagesResponse>> => {
-  return request.get<any, ApiResponse<ListImagesResponse>>('/api/list-images', {
+export const listImages = async (params?: ListImagesParams): Promise<ApiResponse<{
+  items: Array<{
+    id: number
+    filename: string
+    workflow_name: string
+    workflow_id: number | null
+    created_at: string
+    file_path: string
+    variables: any
+    source: string
+    local_path: string | null
+  }>
+  pagination: {
+    page: number
+    per_page: number
+    total: number
+    pages: number
+  }
+}>> => {
+  return request.get('/images', {
     params: {
       page: params?.page || 1,
-      page_size: params?.page_size || 20
+      per_page: params?.page_size || 20
     }
   })
 }
@@ -85,11 +103,15 @@ export const enhancePrompt = async (prompt: string): Promise<ApiResponse<Enhance
 }
 
 export const uploadImage = async (file: FormData): Promise<ApiResponse<UploadImageResponse>> => {
-  return request.post<any, ApiResponse<UploadImageResponse>>('/api/upload-image', file, {
+  return request.post<any, ApiResponse<UploadImageResponse>>('/images/upload', file, {
     headers: {
       'Content-Type': 'multipart/form-data'
     }
   })
+}
+
+export const deleteImage = async (id: number): Promise<ApiResponse<null>> => {
+  return request.delete<any, ApiResponse<null>>(`/api/images/${id}`)
 }
 
 export const generateCaption = async (params: GenerateCaptionParams): Promise<ApiResponse<GenerateCaptionResponse>> => {
