@@ -6,6 +6,7 @@ import PublishPage from '@/views/PublishPage.vue'
 import WorkflowPage from '@/views/WorkflowPage.vue'
 import AgentPage from '@/views/AgentPage.vue'
 import ImageManagement from '@/views/ImageManagement.vue'
+import PromptTemplates from '@/views/PromptTemplates.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -48,6 +49,12 @@ const router = createRouter({
       path: '/images',
       name: 'images',
       component: ImageManagement
+    }
+    ,
+    {
+      path: '/templates',
+      name: 'templates',
+      component: PromptTemplates
     }
   ]
 })

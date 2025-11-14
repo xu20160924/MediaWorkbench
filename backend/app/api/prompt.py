@@ -16,6 +16,30 @@ from app.utils.logger import logger
 
 bp = Blueprint('prompt', __name__, url_prefix='/api')
 
+@bp.route('/prompt/templates', methods=['GET'])
+def list_prompt_templates():
+    try:
+        data = [
+            {
+                'id': 'enhance_system',
+                'name': '提示词增强系统模板',
+                'category': 'enhance',
+                'tags': ['系统模板'],
+                'content': PROMPT_ENHANCE_SYSTEM_MESSAGE,
+            },
+            {
+                'id': 'caption_system',
+                'name': '文案生成系统模板',
+                'category': 'caption',
+                'tags': ['系统模板'],
+                'content': PROMPT_CAPTION_SYSTEM_MESSAGE,
+            }
+        ]
+        return success_response(data)
+    except Exception as e:
+        logger.exception("Error listing prompt templates")
+        return error_response('Failed to list prompt templates', 500)
+
 @bp.route('/enhance-prompt', methods=['POST'])
 def enhance_prompt():
     try:

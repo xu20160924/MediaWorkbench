@@ -188,12 +188,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, h, computed, watch } from 'vue'
+import { ref, onMounted, h, computed, watch, onBeforeUnmount } from 'vue'
 import { useMessage, useDialog, NButton } from 'naive-ui'
 import type { DataTableColumns } from 'naive-ui'
 import { createAgent, listAgents, toggleAgent, deleteAgent, listActiveUsers, updateAgent, listWorkflow } from '@/api/functions'
 import type { Agent, AgentForm, ActiveUser } from '@/api/functions'
 import type { ApiResponse } from '@/api/config'
+import emitter from '@/utils/eventbus'
 
 interface Account extends ActiveUser {}
 
@@ -579,6 +580,14 @@ onMounted(async () => {
     loadAgents(),
     loadWorkflows()
   ])
+  emitter.on('apply-template-to-agent', (content: string) => {
+    agentForm.value.prompt_template = content
+    message.success('已应用模板')
+  })
+})
+
+onBeforeUnmount(() => {
+  emitter.off('apply-template-to-agent')
 })
 </script>
 
@@ -601,4 +610,4 @@ onMounted(async () => {
 .agent-card {
   margin-bottom: 20px;
 }
-</style> 
+</style>

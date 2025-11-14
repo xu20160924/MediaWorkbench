@@ -3,6 +3,7 @@ from app import create_app
 from app.extensions import db
 from conf import DATABASE_URI
 from app.scheduler import scheduler
+import os
 
 app = create_app()
 
@@ -21,4 +22,5 @@ with app.app_context():
 scheduler.init_app(app)
 
 if __name__ == '__main__':
-    app.run(debug=False, host='0.0.0.0', port=5001)
+    port = int(os.getenv('PORT', '5001'))
+    app.run(debug=False, host='0.0.0.0', port=port)

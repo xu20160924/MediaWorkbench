@@ -28,6 +28,10 @@
       <i class="icon image-icon"></i>
       <span>图片管理</span>
     </router-link>
+    <router-link to="/templates" class="nav-item">
+      <i class="icon template-icon"></i>
+      <span>提示词模板</span>
+    </router-link>
   </nav>
 </template>
 
@@ -107,6 +111,10 @@
   background-image: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><path d="M0 96C0 60.7 28.7 32 64 32H448c35.3 0 64 28.7 64 64V416c0 35.3-28.7 64-64 64H64c-35.3 0-64-28.7-64-64V96zM323.8 311.7c1.7-2.3 2.4-5.2 1.9-8l-14.9-71.4c-1.1-5.3-7.2-7-10.6-3.1l-98 111.8L143 288.1c-2.3-2.5-6.1-2.8-8.7-.6l-21.4 17.4c-2.6 2.1-3 6-.9 8.6l53.8 69c1.9 2.5 5.5 2.6 7.4.1l22.4-30.9 64.2 90.4c2.5 3.5 7.6 3.1 9.5-.8l24.2-61.6zM128 192a32 32 0 1 0 -64 0 32 32 0 1 0 64 0z" fill="currentColor"/></svg>');
 }
 
+.template-icon {
+  background-image: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><path d="M64 32C28.7 32 0 60.7 0 96V416c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V160c0-8.5-3.4-16.6-9.4-22.6L310.6 9.4C304.6 3.4 296.5 0 288 0H64zm0 64H256V192c0 17.7 14.3 32 32 32H384V416c0 17.7-14.3 32-32 32H64c-17.7 0-32-14.3-32-32V96zm256 64V64l96 96H320zM96 256h256v32H96V256zm0 64h256v32H96V320z" fill="currentColor"/></svg>');
+}
+
 @media (max-width: 768px) {
   .nav-menu {
     width: 100%;
@@ -129,4 +137,4 @@
     transform: translateY(-2px);
   }
 }
-</style> 
+</style>

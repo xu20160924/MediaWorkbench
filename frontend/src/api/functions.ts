@@ -111,7 +111,7 @@ export const uploadImage = async (file: FormData): Promise<ApiResponse<UploadIma
 }
 
 export const deleteImage = async (id: number): Promise<ApiResponse<null>> => {
-  return request.delete<any, ApiResponse<null>>(`/api/images/${id}`)
+  return request.delete<any, ApiResponse<null>>(`/api/images/delete/${id}`)
 }
 
 export const generateCaption = async (params: GenerateCaptionParams): Promise<ApiResponse<GenerateCaptionResponse>> => {
@@ -212,4 +212,4 @@ export async function deleteAgent(agentId: number): Promise<ApiResponse<void>> {
 
 export async function updateAgent(agentId: number, data: AgentForm): Promise<ApiResponse<Agent>> {
   return request.put<any, ApiResponse<Agent>>(`/api/agent/agents/${agentId}`, data)
-} 
+}

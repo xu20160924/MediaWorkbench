@@ -6,6 +6,11 @@ class ImageSource(Enum):
     UPLOAD = 'upload'
     LOCAL_DIR = 'local_dir'
 
+class ImageType(Enum):
+    GENERAL = 'general'
+    ADVERTISING = 'advertising_campaign'
+    ADVERTISING_RULE = 'advertising_rule'
+
 class Image(db.Model):
     __tablename__ = 'images'
     
@@ -16,14 +21,23 @@ class Image(db.Model):
     file_path = db.Column(db.String(255), nullable=False)
     workflow_id = db.Column(db.Integer, db.ForeignKey('workflows.id'))
     variables = db.Column(db.JSON)
-    source = db.Column(db.Enum(ImageSource), default=ImageSource.UPLOAD, nullable=False)
+    source = db.Column(
+        db.Enum(ImageSource, native_enum=False, values_callable=lambda x: [e.value for e in x]),
+        default=ImageSource.UPLOAD,
+        nullable=False
+    )
+    image_type = db.Column(
+        db.Enum(ImageType, native_enum=False, values_callable=lambda x: [e.value for e in x]),
+        default=ImageType.GENERAL,
+        nullable=False
+    )
     local_path = db.Column(db.String(500), nullable=True)  # Only used when source is LOCAL_DIR
     
     # 修改关系定义，指定正确的表名
     workflow = db.relationship('Workflow', 
                              backref=db.backref('images', lazy=True),
-                             foreign_keys=[workflow_id])
-    
+                              foreign_keys=[workflow_id])
+
     def to_dict(self):
         return {
             'id': self.id,
@@ -33,6 +47,26 @@ class Image(db.Model):
             'created_at': self.created_at.isoformat(),
             'file_path': self.file_path,
             'variables': self.variables,
-            'source': self.source.value,
+            'source': self.source.value if hasattr(self.source, 'value') else self.source,
+            'image_type': self.image_type.value if hasattr(self.image_type, 'value') else self.image_type,
             'local_path': self.local_path
+        }
+
+# 默认目录配置，用于为不同图片类型设置本地扫描目录
+class ImageDefaultLocation(db.Model):
+    __tablename__ = 'image_default_locations'
+
+    id = db.Column(db.Integer, primary_key=True)
+    image_type = db.Column(db.String(50), nullable=False, unique=True)
+    directory = db.Column(db.String(500), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'image_type': self.image_type,
+            'directory': self.directory,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
         }

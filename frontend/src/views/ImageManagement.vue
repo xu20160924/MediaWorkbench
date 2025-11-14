@@ -6,10 +6,12 @@
       :mask-closable="true"
       :auto-focus="false"
       preset="card"
-      style="width: 95%; max-width: 1200px; height: 95vh;"
       :bordered="false"
       :closable="false"
       class="preview-modal"
+      style="width: 100vw; height: 100vh; max-width: 100%; max-height: 100%; margin: 0;"
+      :mask-style="{ backgroundColor: 'rgba(0, 0, 0, 0.85)' }"
+      @after-leave="resetPreview"
     >
       <template #header>
         <div class="preview-header">
@@ -25,20 +27,142 @@
           </n-button>
         </div>
       </template>
-      <div class="preview-content">
+      <div class="preview-content" @click.self="showPreview = false">
         <div class="image-container">
-          <img 
-            :src="previewImageUrl" 
-            alt="图片预览" 
-            class="preview-image" 
-            v-if="previewImageUrl" 
-            @click="showPreview = false"
-          />
+          <template v-if="previewImageUrl">
+            <div class="image-wrapper">
+              <img 
+                :src="previewImageUrl" 
+                alt="图片预览" 
+                class="preview-image" 
+                :style="imageStyle"
+                @click.stop
+                @mousedown="startDrag"
+                @mousemove="handleDrag"
+                @mouseup="endDrag"
+                @mouseleave="endDrag"
+                @wheel.prevent="handleZoom"
+              />
+            </div>
+          </template>
           <n-empty 
             v-else 
             description="预览不可用" 
             class="empty-preview"
           />
+        </div>
+        
+        <!-- Image Controls -->
+        <div class="preview-controls">
+          <n-button-group>
+            <n-tooltip>
+              <template #trigger>
+                <n-button @click="zoomOut" :disabled="zoomLevel <= 0.5">
+                  <template #icon>
+                    <n-icon><RemoveOutline /></n-icon>
+                  </template>
+                </n-button>
+              </template>
+              <span>缩小</span>
+            </n-tooltip>
+            <n-tooltip>
+              <template #trigger>
+                <n-button @click="resetZoom">
+                  {{ Math.round(zoomLevel * 100) }}%
+                </n-button>
+              </template>
+              <span>重置缩放</span>
+            </n-tooltip>
+            <n-tooltip>
+              <template #trigger>
+                <n-button @click="zoomIn" :disabled="zoomLevel >= 3">
+                  <template #icon>
+                    <n-icon><AddOutline /></n-icon>
+                  </template>
+                </n-button>
+              </template>
+              <span>放大</span>
+            </n-tooltip>
+          </n-button-group>
+          
+          <n-button-group>
+            <n-tooltip>
+              <template #trigger>
+                <n-button @click="rotateLeft">
+                  <template #icon>
+                    <n-icon><RefreshOutline /></n-icon>
+                  </template>
+                </n-button>
+              </template>
+              <span>左旋转</span>
+            </n-tooltip>
+            <n-tooltip>
+              <template #trigger>
+                <n-button @click="rotateRight">
+                  <template #icon>
+                    <n-icon><RefreshOutline style="transform: scaleX(-1);" /></n-icon>
+                  </template>
+                </n-button>
+              </template>
+              <span>右旋转</span>
+            </n-tooltip>
+          </n-button-group>
+          
+          <n-tooltip>
+            <template #trigger>
+              <n-button type="primary" @click="downloadImage">
+                <template #icon>
+                  <n-icon><DownloadOutline /></n-icon>
+                </template>
+              </n-button>
+            </template>
+            <span>下载图片</span>
+          </n-tooltip>
+        </div>
+      </div>
+    </n-modal>
+
+    <!-- Default Directory Modal -->
+    <n-modal 
+      v-model:show="showDefaultDirModal"
+      preset="card"
+      title="设置默认目录"
+      :mask-closable="true"
+      :bordered="false"
+    >
+      <div class="default-dir-form">
+        <div class="form-row">
+          <div class="form-label">普通图片</div>
+          <n-input v-model:value="defaultLocations.general" placeholder="请输入本地目录路径" />
+          <n-button size="small" ghost @click="selectCurrentFolder('general')">
+            <template #icon>
+              <n-icon><FolderOpenOutline /></n-icon>
+            </template>
+            请选择目录
+          </n-button>
+        </div>
+        <div class="form-row">
+          <div class="form-label">广告活动</div>
+          <n-input v-model:value="defaultLocations.advertising_campaign" placeholder="请输入本地目录路径" />
+          <n-button size="small" ghost @click="selectCurrentFolder('advertising_campaign')">
+            <template #icon>
+              <n-icon><FolderOpenOutline /></n-icon>
+            </template>
+            请选择目录
+          </n-button>
+        </div>
+        <div class="form-row">
+          <div class="form-label">广告规则</div>
+          <n-input v-model:value="defaultLocations.advertising_rule" placeholder="请输入本地目录路径" />
+          <n-button size="small" ghost @click="selectCurrentFolder('advertising_rule')">
+            <template #icon>
+              <n-icon><FolderOpenOutline /></n-icon>
+            </template>
+            请选择目录
+          </n-button>
+        </div>
+        <div class="form-actions">
+          <n-button type="primary" @click="saveDefaultLocations">保存并加载</n-button>
         </div>
       </div>
     </n-modal>
@@ -46,28 +170,41 @@
     <div class="content-wrapper">
       <div class="page-header">
         <div class="header-content">
-          <n-dropdown
-            trigger="click"
-            :options="uploadOptions"
-            @select="handleUploadSelect"
-          >
-            <n-button type="primary" ghost>
+          <div class="header-actions">
+            <n-dropdown
+              v-model:show="showUploadMenu"
+              trigger="click"
+              :options="uploadOptions"
+              @select="handleUploadSelect"
+            >
+              <n-button type="primary" ghost>
+                <template #icon>
+                  <n-icon><CloudUploadOutline /></n-icon>
+                </template>
+                添加图片
+                <n-icon><ChevronDown /></n-icon>
+              </n-button>
+            </n-dropdown>
+            <div class="filter-group">
+              <span class="filter-label">类型</span>
+              <n-select
+                v-model:value="imageTypeFilter"
+                :options="imageTypeOptions"
+                class="type-select"
+                clearable
+                placeholder="筛选图片类型"
+              />
+            </div>
+            <n-button ghost class="default-dir" @click="showDefaultDirModal = true">
               <template #icon>
-                <n-icon><CloudUploadOutline /></n-icon>
+                <n-icon><FolderOpenOutline /></n-icon>
               </template>
-              添加图片
-              <n-icon><ChevronDown /></n-icon>
+              默认目录
             </n-button>
-          </n-dropdown>
-          
-          <input
-            id="file-upload"
-            type="file"
-            multiple
-            accept="image/*"
-            style="display: none"
-            @change="handleFileSelect"
-          />
+            <n-button type="error" ghost class="delete-all" @click="confirmDeleteAll">
+              全部删除
+            </n-button>
+          </div>
           
           <h2 class="page-title">图片管理</h2>
           
@@ -93,7 +230,7 @@
       <div v-if="viewMode === 'grid'" class="image-grid">
         <div v-for="(image, index) in images" :key="'grid-' + index" class="image-item">
           <div class="image-preview-container" @click="showImagePreview(image)">
-            <img :src="getImageUrl(image.path)" :alt="image.name" class="image-preview" @error="handleImageError" />
+            <img :src="getImageUrl(image)" :alt="image.name" class="image-preview" @error="handleImageError" />
             <div class="preview-overlay">
               <n-icon size="24"><SearchOutline /></n-icon>
               <span>预览</span>
@@ -138,19 +275,27 @@
             <!-- Image Items -->
             <n-list-item v-for="(image, index) in images" :key="'list-' + index" class="image-list-item">
               <n-thing>
-                <template #avatar>
-                  <div class="list-image-container">
-                    <img :src="getImageUrl(image.path)" class="list-image-preview" @error="handleImageError" />
-                  </div>
-                </template>
                 <div class="list-item-content">
                   <div class="list-item-row">
+                    <div class="list-item-cell" style="width: 60px;">
+                      <div class="list-image-container">
+                        <img :src="getImageUrl(image)" class="list-image-preview" @error="handleImageError" />
+                      </div>
+                    </div>
                     <div class="list-item-cell" style="flex: 2;">
                       <div class="list-item-header">
                         <div class="image-name">{{ image.name }}</div>
-                        <n-tag size="small" :type="image.source === 'upload' ? 'success' : 'info'" class="source-tag">
-                          {{ image.source === 'upload' ? '上传' : '本地' }}
-                        </n-tag>
+                        <div class="image-tags">
+                          <n-tag size="small" :type="image.source === 'upload' ? 'success' : 'info'" class="source-tag">
+                            {{ image.source === 'upload' ? '上传' : '本地' }}
+                          </n-tag>
+                          <n-tag size="small" :type="image.image_type === 'advertising_campaign' ? 'warning' : 'default'" class="type-tag">
+                            <template #icon>
+                              <n-icon :component="getImageTypeIcon(image.image_type)" />
+                            </template>
+                            {{ getImageTypeLabel(image.image_type) }}
+                          </n-tag>
+                        </div>
                       </div>
                     </div>
                     
@@ -176,7 +321,7 @@
                               </template>
                             </n-button>
                           </template>
-                          删除
+                          <span>删除</span>
                         </n-tooltip>
                       </div>
                     </div>
@@ -192,407 +337,985 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, onMounted, h } from 'vue';
+import { defineComponent, ref, onMounted, computed, watch, h, Ref } from 'vue';
+
+interface ImageItem {
+  id?: string | number;
+  name: string;
+  url?: string;
+  local_path?: string;
+  size?: number;
+  created_at?: string;
+  image_type?: string;
+  source?: string;
+  workflow_name?: string;
+}
+
+interface Position {
+  x: number;
+  y: number;
+}
+
+type ViewMode = 'grid' | 'list';
 import { 
   useMessage, 
-  useDialog, 
-  NList, 
-  NListItem, 
-  NThing, 
-  NRadioGroup, 
-  NRadioButton, 
-  NIcon, 
-  NButton, 
-  NTag,
+  useDialog,
+  NButton,
+  NIcon,
+  NImage,
+  NModal,
+  NDropdown,
+  NButtonGroup,
   NTooltip,
-  NEmpty
+  NEmpty,
+  NList,
+  NListItem,
+  NThing,
+  NRadioGroup,
+  NRadioButton,
+  NTag,
+  NSelect
+  ,
+  NInput
 } from 'naive-ui';
-import { DownloadOutline, TrashOutline, Close, SearchOutline } from '@vicons/ionicons5';
-import { GridOutline, ListOutline } from '@vicons/ionicons5';
-import { listImages, uploadImage } from '@/api/functions';
-import { CloudUploadOutline, ChevronDown, FolderOpenOutline, ImageOutline } from '@vicons/ionicons5';
+import { 
+  CloudUploadOutline,
+  FolderOpenOutline,
+  GridOutline, 
+  ListOutline, 
+  TrashOutline, 
+  EyeOutline,
+  ChevronDown,
+  ImagesOutline,
+  MegaphoneOutline,
+  DocumentTextOutline,
+  CloseOutline,
+  AddOutline,
+  SearchOutline,
+  RefreshOutline,
+  RemoveOutline,
+  DownloadOutline
+} from '@vicons/ionicons5';
+import api from '@/api';
 
 export default defineComponent({
   name: 'ImageManagement',
   components: {
+    NButton,
+    NIcon,
+    NImage,
+    NModal,
+    NDropdown,
+    NButtonGroup,
+    NTooltip,
+    NEmpty,
     CloudUploadOutline,
     ChevronDown,
     FolderOpenOutline,
-    ImageOutline,
-    NList,
-    NListItem,
-    NThing,
-    NRadioGroup,
-    NRadioButton,
-    NIcon,
     GridOutline,
     ListOutline,
-    DownloadOutline,
     TrashOutline,
-    NTooltip,
-    NButton,
-    NTag,
-    NEmpty
+    EyeOutline,
+    ImagesOutline,
+    MegaphoneOutline,
+    DocumentTextOutline,
+    Close: CloseOutline,
+    AddOutline,
+    SearchOutline,
+    RefreshOutline,
+    RemoveOutline,
+    DownloadOutline
   },
+  
   setup() {
     const message = useMessage();
     const dialog = useDialog();
-    const viewMode = ref<'grid' | 'list'>('grid');
+    
+    // State
+    const viewMode = ref<ViewMode>('grid');
     const showPreview = ref(false);
+    const showDefaultDirModal = ref(false);
+    const showUploadMenu = ref(false);
     const previewImageUrl = ref('');
-    interface ImageItem {
-      id: number;
-      name: string;
-      path: string;
-      size: number;
-      created_at: string;
-      source: 'upload' | 'local_dir';
-      workflow_name?: string;
-    }
-
     const images = ref<ImageItem[]>([]);
-
-    const uploadOptions = [
-      {
-        label: '上传图片',
-        key: 'upload',
-        props: {
-          icon: () => h(NIcon, null, { default: () => h(ImageOutline) })
-        }
-      },
-      {
-        label: '从文件夹添加',
-        key: 'directory',
-        props: {
-          icon: () => h(NIcon, null, { default: () => h(FolderOpenOutline) })
-        }
-      }
+    const loading = ref(false);
+    const imageTypeFilter = ref('all');
+    
+    // Image type options for the dropdown
+    const imageTypeOptions = [
+      { label: '所有类型', value: 'all' },
+      { label: '普通图片', value: 'general' },
+      { label: '活动配图', value: 'advertising_campaign' },
+      { label: '广告规则', value: 'advertising_rule' },
     ];
-
-    const handleUploadSelect = (key: string) => {
-      if (key === 'upload') {
-        document.getElementById('file-upload')?.click()
-      } else if (key === 'directory') {
-        // @ts-ignore - webkitdirectory is not in the standard yet
-        const input = document.createElement('input')
-        input.type = 'file'
-        input.webkitdirectory = true
-        input.multiple = true
-        input.accept = 'image/*'
-        input.onchange = handleDirectorySelect
-        input.click()
-      }
-    };
-
-    const handleFileSelect = async (event: Event) => {
-      const input = event.target as HTMLInputElement
-      if (input.files && input.files.length > 0) {
-        const files = Array.from(input.files)
-        // Filter out non-image files
-        const imageFiles = files.filter(file => file.type.startsWith('image/'))
-        if (imageFiles.length === 0) {
-          message.error('请选择有效的图片文件')
-          return
-        }
-        await uploadFiles(imageFiles)
-      }
-    };
-
-    const handleDirectorySelect = async (event: Event) => {
-      const input = event.target as HTMLInputElement
-      if (input.files && input.files.length > 0) {
-        await uploadFiles(Array.from(input.files))
-      }
-    };
-
-    const uploadFiles = async (files: File[]) => {
-      if (files.length === 0) return
-
-      const uploadPromises = files.map(async (file) => {
-        const formData = new FormData()
-        formData.append('file', file)  // Note: backend expects 'file' not 'files'
-        
-        try {
-          const response = await uploadImage(formData)
-          if (response && response.success) {
-            return { success: true, file: file.name }
-          } else {
-            return { success: false, file: file.name, error: response?.message || '上传失败' }
-          }
-        } catch (error: any) {
-          console.error(`Upload failed for ${file.name}:`, error)
-          return { 
-            success: false, 
-            file: file.name, 
-            error: error?.response?.data?.message || '上传失败，请检查网络连接'
-          }
-        }
-      })
-
-      try {
-        const results = await Promise.all(uploadPromises)
-        const successCount = results.filter(r => r.success).length
-        const errorCount = results.length - successCount
-        
-        if (successCount > 0) {
-          message.success(`成功上传 ${successCount} 个文件`)
-          await fetchImages()
-        }
-        
-        if (errorCount > 0) {
-          const errorFiles = results
-            .filter(r => !r.success)
-            .map(r => `${r.file}: ${r.error}`)
-            .join('\n')
-          message.error(`${errorCount} 个文件上传失败：\n${errorFiles}`)
-        }
-      } catch (error) {
-        console.error('Error processing uploads:', error)
-        message.error('处理上传时发生错误')
-      } finally {
-        // Reset file input
-        const input = document.getElementById('file-upload') as HTMLInputElement
-        if (input) input.value = ''
-      }
-    };
-
-    // Function to show image preview
-    const showImagePreview = (image: ImageItem) => {
-      console.log('Showing preview for image:', image);
-      
-      // Use the direct file URL from the backend
-      let url = '';
-      
-      // If the path is a full URL, use it directly
-      if (image.path.startsWith('http')) {
-        url = image.path;
-      } else {
-        // Otherwise, construct the URL using the filename
-        const filename = image.path.split('/').pop() || '';
-        url = `/api/images/uploads/${encodeURIComponent(filename)}?t=${new Date().getTime()}`;
-      }
-      
-      console.log('Using preview URL:', url);
-      previewImageUrl.value = url;
-      showPreview.value = true;
-      
-      // For debugging - log if the image loads or fails
-      const img = new Image();
-      img.onload = () => {
-        console.log('Preview image loaded successfully');
-        console.log('Image dimensions:', img.width, 'x', img.height);
-      };
-      img.onerror = (e) => {
-        console.error('Failed to load preview image:', e);
-        console.error('Failed URL:', url);
-      };
-      img.src = url;
-    };
-
-    // Define fetchImages before it's used
-    const fetchImages = async () => {
-      try {
-        const response = await listImages({ page: 1, page_size: 20 });
-        if (response.success && response.data) {
-          images.value = response.data.items.map((img) => {
-            // Ensure source is either 'upload' or 'local_dir'
-            const source = img.source === 'local_dir' ? 'local_dir' : 'upload';
-            return {
-              id: img.id,
-              name: img.filename || `image-${img.id}`,
-              path: img.file_path,
-              size: 0, // Backend doesn't currently provide file size
-              created_at: img.created_at,
-              source: source,
-              workflow_name: img.workflow_name
-            };
-          });
-        } else {
-          throw new Error(response.message || 'Failed to load images');
-        }
-      } catch (error) {
-        console.error('Error fetching images:', error);
-        message.error('获取图片列表失败: ' + (error as Error).message);
-      }
-    };
-
-    const getImageUrl = (path: string) => {
-      if (!path) {
-        console.warn('getImageUrl called with empty path');
+    
+    // Image preview state
+    const scale = ref(1);
+    const rotate = ref(0);
+    const position = ref<Position>({ x: 0, y: 0 });
+    const isDragging = ref(false);
+    const dragStart = ref({ x: 0, y: 0 });
+    
+    // Calculate zoom level for display
+    const zoomLevel = computed(() => Math.round(scale.value * 100) + '%');
+    
+    // Image URL helper
+    const getImageUrl = (image: any): string => {
+      if (!image) {
+        console.log('No image provided');
         return '';
       }
       
-      // If it's already a full URL, return as is
-      if (path.startsWith('http')) {
-        console.log('Returning full URL:', path);
-        return path;
+      // Debug log the image object
+      console.log('Image object:', JSON.parse(JSON.stringify(image)));
+      
+      // If URL is directly provided, use it
+      if (image.url) {
+        console.log('Using direct URL:', image.url);
+        return image.url;
       }
       
-      // Log the original path for debugging
-      console.log('Original image path:', path);
+      // Handle different possible path properties
+      const filePath = image.file_path || image.local_path || image.path || '';
+      if (!filePath) {
+        console.log('No valid path found in image object');
+        return '';
+      }
       
-      // Remove any 'uploads/' prefix if present
-      let cleanPath = path.replace(/^uploads[\\/]/, '');
-      
-      // Get just the filename without any path
-      let filename = cleanPath.split('/').pop() || cleanPath;
-      
-      // Remove any URL parameters if present
-      filename = filename.split('?')[0];
-      
-      console.log('Extracted filename:', filename);
-      
-      // Base URL for uploaded images
-      const baseUrl = '/api/images/uploads';
-      const timestamp = new Date().getTime();
-      
-      // Encode the filename but keep forward slashes as is
-      const encodedFilename = encodeURIComponent(filename).replace(/%2F/g, '/');
-      
-      // Construct the final URL
-      const imageUrl = `${baseUrl}/${encodedFilename}?t=${timestamp}`;
-      
-      console.log('Generated image URL:', imageUrl);
-      return imageUrl;
+      const baseEnv = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/$/, '');
+      const devStaticBase = import.meta.env.DEV ? 'http://127.0.0.1:5002' : baseEnv;
+      const p = String(filePath).replace(/\\/g, '/');
+      // Map to backend static routes
+      // Uploads: handle both 'upload/images/<filename>' and '/uploads/<filename>'
+      const uploadMatch = p.match(/(?:^|\/)upload\/images\/(.+)$/) || p.match(/(?:^|\/)uploads\/(.+)$/);
+      if (uploadMatch && uploadMatch[1]) {
+        const url = `${devStaticBase}/images/uploads/${uploadMatch[1]}`;
+        console.log('Generated upload URL:', url);
+        return url;
+      }
+      // Outputs: handle both 'output/images/<filename>' and '/output/<filename>'
+      const outputMatch = p.match(/(?:^|\/)output\/images\/(.+)$/) || p.match(/(?:^|\/)output\/(.+)$/);
+      if (outputMatch && outputMatch[1]) {
+        const url = `${devStaticBase}/images/output/${outputMatch[1]}`;
+        console.log('Generated output URL:', url);
+        return url;
+      }
+      // Fallback: direct http or base + path
+      if (p.startsWith('http')) {
+        console.log('Generated direct URL:', p);
+        return p;
+      }
+      const normalized = p.startsWith('/') ? p.slice(1) : p;
+      const url = `${baseEnv}/${normalized}`;
+      console.log('Generated fallback URL:', url);
+      return url;
     };
-
-    const formatFileSize = (bytes: number) => {
-      if (bytes === 0) return '0 Bytes';
+    
+    // Format file size
+    const formatFileSize = (bytes: number): string => {
+      if (!bytes) return '0 B';
       const k = 1024;
-      const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+      const sizes = ['B', 'KB', 'MB', 'GB'];
       const i = Math.floor(Math.log(bytes) / Math.log(k));
-      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+      return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
     };
-
-    const formatDate = (dateString: string) => {
+    
+    // Format date
+    const formatDate = (dateString: string): string => {
+      if (!dateString) return '';
       return new Date(dateString).toLocaleString();
     };
-
-    const downloadImage = (image: { name: string; path: string }) => {
-      const link = document.createElement('a');
-      link.href = getImageUrl(image.path);
-      link.download = image.name;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+    
+    // Image preview handlers
+    const showImagePreview = (image: any) => {
+      if (!image) {
+        console.error('No image provided for preview');
+        return;
+      }
+      
+      // Reset preview state
+      scale.value = 1;
+      rotate.value = 0;
+      position.value = { x: 0, y: 0 };
+      
+      // Get the image URL and force refresh if needed
+      let url = getImageUrl(image);
+      if (!url) {
+        console.error('Could not generate URL for image:', image);
+        message.error('无法加载图片');
+        return;
+      }
+      
+      // Add timestamp to prevent caching issues
+      const timestamp = new Date().getTime();
+      const separator = url.includes('?') ? '&' : '?';
+      previewImageUrl.value = `${url}${separator}t=${timestamp}`;
+      
+      console.log('Showing image preview:', previewImageUrl.value);
+      showPreview.value = true;
+      
+      // Preload the image to check if it's valid
+      const img = new Image();
+      img.onload = () => {
+        console.log('Image loaded successfully');
+      };
+      img.onerror = () => {
+        console.error('Failed to load image:', url);
+        message.error('图片加载失败');
+        showPreview.value = false;
+      };
+      img.src = previewImageUrl.value;
     };
-
-    const deleteImage = async (image: any) => {
+    
+    
+    // Download image
+    const downloadImage = async () => {
+      if (!previewImageUrl.value) return;
+      
       try {
-        const url = new URL(`/api/images/delete/${image.id}`, window.location.origin);
-        
-        console.log('Sending DELETE request to:', url.toString());
-        
-        const response = await fetch(url.toString(), {
-          method: 'DELETE',
-          headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-          },
-          credentials: 'include',
-          mode: 'cors',
-          cache: 'no-cache',
-          redirect: 'follow',
-          referrerPolicy: 'no-referrer'
-        });
-
-        console.log('Delete response status:', response.status);
-        
-        // Read the response once
-        const responseText = await response.text();
-        let responseData;
-        
-        try {
-          responseData = responseText ? JSON.parse(responseText) : {};
-          console.log('Response data:', responseData);
-        } catch (e) {
-          console.warn('Response is not valid JSON:', responseText);
-          responseData = { message: responseText };
-        }
-
-        if (!response.ok) {
-          throw new Error(responseData.message || `删除图片失败 (${response.status})`);
-        }
-
-        // If we get here, the delete was successful
-        const index = images.value.findIndex(img => img.id === image.id);
-        if (index !== -1) {
-          images.value.splice(index, 1);
-        }
-        
-        message.success('图片删除成功');
-      } catch (error: any) {
-        console.error('Error deleting image:', error);
-        message.error(error.message || '删除图片失败');
+        const response = await fetch(previewImageUrl.value);
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = previewImageUrl.value.split('/').pop() || 'image';
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      } catch (error) {
+        console.error('下载失败:', error);
+        message.error('下载失败');
       }
     };
-
-    const confirmDelete = (image: { id: number; name: string }) => {
+    
+    // Image error handler
+    const handleImageError = (e: Event) => {
+      const img = e.target as HTMLImageElement;
+      img.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiM2NjYiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIiBjbGFzcz0ibHVjaWRlIGx1Y2lkZS1pbWFnZSI+PHJlY3Qgd2lkdGg9IjE4IiBoZWlnaHQ9IjE4IiB4PSIzIiB5PSIzIiByeD0iMiIgcnk9IjIiLz48Y2lyY2xlIGN4PSI4LjUiIGN5PSI4LjUiIHI9IjEuNSIvPjxwb2x5bGluZSBwb2ludHM9IjIxIDE1IDE2IDEwIDUgMjEiLz48L3N2Zz4=';
+    };
+    
+    // Delete confirmation
+    const confirmDelete = async (image: any) => {
       dialog.warning({
         title: '确认删除',
-        content: `确定要删除图片 "${image.name}" 吗？`,
+        content: '确定要删除这张图片吗？',
         positiveText: '删除',
         negativeText: '取消',
-        onPositiveClick: () => deleteImage(image),
+        onPositiveClick: async () => {
+          try {
+            // Remove the leading /api since it's already included in the baseURL
+            await api.delete(`/images/delete/${image.id}`);
+            message.success('删除成功');
+            await fetchImages();
+          } catch (error: any) {
+            console.error('删除失败:', error);
+            const errorMessage = error.response?.data?.message || '删除失败';
+            message.error(errorMessage);
+          }
+        }
       });
     };
 
-    const handleImageError = (e: Event) => {
-      const img = e.target as HTMLImageElement;
-      console.error('Failed to load image:', img.src);
+    const confirmDeleteAll = async () => {
+      if (images.value.length === 0) {
+        message.warning('没有可删除的图片');
+        return;
+      }
+
+      dialog.warning({
+        title: '确认删除所有图片',
+        content: '此操作将删除全部图片记录，上传/生成的文件也会尝试删除。此操作不可撤销！',
+        positiveText: '确认全部删除',
+        negativeText: '取消',
+        onPositiveClick: async () => {
+          const loading = message.loading('正在删除所有图片...', { duration: 0 });
+          try {
+            // First try the batch delete endpoint
+            try {
+              const response = await api.delete('/images/clear-all');
+              if (response.status === 200) {
+                message.success('成功删除所有图片');
+                images.value = []; // Clear the local images array immediately
+                await fetchImages(); // Refresh the list
+                return;
+              }
+            } catch (e) {
+              console.warn('Batch delete failed, falling back to individual deletes');
+            }
+
+            // Fallback to individual deletes if batch delete fails
+            const total = images.value.length;
+            let successCount = 0;
+            const errors: string[] = [];
+
+            for (const img of [...images.value]) { // Create a copy of the array to avoid modification during iteration
+              try {
+                await api.delete(`/images/delete/${img.id}`);
+                successCount++;
+                // Update progress
+                loading.content = `正在删除图片 (${successCount}/${total})...`;
+              } catch (error: any) {
+                console.error(`Failed to delete image ${img.id}:`, error);
+                errors.push(`图片 ${img.id} 删除失败: ${error.response?.data?.message || '未知错误'}`);
+              }
+            }
+
+            // Show results
+            if (successCount > 0) {
+              message.success(`成功删除 ${successCount} 张图片`);
+            }
+            if (errors.length > 0) {
+              message.error(`${errors.length} 张图片删除失败，请检查控制台`);
+              console.error('Failed to delete some images:', errors);
+            }
+
+            // Refresh the list
+            await fetchImages();
+          } catch (error) {
+            console.error('Delete all failed:', error);
+            message.error('删除失败: ' + (error.response?.data?.message || '未知错误'));
+          } finally {
+            loading.destroy();
+          }
+        }
+      });
+    };
+    
+    // Upload options
+    const uploadOptions = [
+      { 
+        type: 'group',
+        label: '上传单个图片',
+        key: 'single',
+        children: [
+          { 
+            label: '普通图片', 
+            key: 'general',
+            icon: () => h(ImagesOutline)
+          },
+          { 
+            label: '广告图片', 
+            key: 'advertising_campaign',
+            icon: () => h(MegaphoneOutline)
+          },
+          { 
+            label: '广告规则', 
+            key: 'advertising_rule',
+            icon: () => h(DocumentTextOutline)
+          }
+        ]
+      },
+      { 
+        type: 'group',
+        label: '上传图片目录',
+        key: 'directory',
+        children: [
+          { 
+            label: '普通图片目录', 
+            key: 'dir_general',
+            icon: () => h(FolderOpenOutline)
+          },
+          { 
+            label: '广告图片目录', 
+            key: 'dir_advertising_campaign',
+            icon: () => h(FolderOpenOutline)
+          },
+          { 
+            label: '广告规则目录', 
+            key: 'dir_advertising_rule',
+            icon: () => h(FolderOpenOutline)
+          }
+        ]
+      }
+    ];
+    
+    // Get icon for image type
+    const getImageTypeIcon = (type: string) => {
+      switch (type) {
+        case 'advertising_campaign':
+          return MegaphoneOutline;
+        case 'advertising_rule':
+          return DocumentTextOutline;
+        default:
+          return ImagesOutline;
+      }
+    };
+    
+    // Get label for image type
+    const getImageTypeLabel = (type: string) => {
+      const option = imageTypeOptions.find((opt: any) => opt.value === type);
+      return option ? option.label : '未知类型';
+    };
+    
+    // Get image style object
+    const getImageStyle = () => {
+      return {
+        'transform': `scale(${scale.value}) rotate(${rotate.value}deg) translate(${position.value.x}px, ${position.value.y}px)`,
+        'cursor': isDragging.value ? 'grabbing' : 'grab',
+        'transition': isDragging.value ? 'none' : 'transform 0.2s ease',
+        'max-width': '100%',
+        'max-height': '100%',
+        'user-select': 'none',
+        'user-drag': 'none',
+        '-webkit-user-drag': 'none',
+        '-moz-user-select': 'none',
+        '-webkit-user-select': 'none',
+        '-ms-user-select': 'none'
+      };
+    };
+    
+    // Image style for preview
+    const imageStyle = computed(getImageStyle);
+    
+    // Drag functions
+    const startDrag = (e: MouseEvent) => {
+      isDragging.value = true;
+      dragStart.value = { x: e.clientX - position.value.x, y: e.clientY - position.value.y };
+    };
+
+    const handleDrag = (e: MouseEvent) => {
+      if (!isDragging.value) return;
+      position.value = {
+        x: e.clientX - dragStart.value.x,
+        y: e.clientY - dragStart.value.y
+      };
+    };
+
+    const endDrag = () => {
+      isDragging.value = false;
+    };
+
+    // Handle zoom with mouse wheel
+    const handleZoom = (e: WheelEvent) => {
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? -0.1 : 0.1;
+      const newScale = Number(scale.value) + delta;
+      scale.value = Math.min(Math.max(0.5, newScale), 3);
+    };
+
+    // Zoom controls
+    const zoomIn = () => {
+      scale.value = Math.min(Number(scale.value) + 0.1, 3);
+    };
+
+    const zoomOut = () => {
+      scale.value = Math.max(Number(scale.value) - 0.1, 0.5);
+    };
+
+    const resetZoom = () => {
+      scale.value = 1;
+    };
+
+    // Rotate controls
+    const rotateLeft = () => {
+      rotate.value = (rotate.value - 90) % 360;
+    };
+
+    const rotateRight = () => {
+      rotate.value = (rotate.value + 90) % 360;
+    };
+
+    // Handle upload selection from dropdown
+    const handleUploadSelect = (key: string) => {
+      const isDirectory = key.startsWith('dir_');
+      const imageType = isDirectory ? key.replace('dir_', '') : key;
       
-      // Log additional debugging information
-      const imageSrc = img.getAttribute('src') || '';
-      console.log('Image source:', imageSrc);
-      console.log('Image alt:', img.alt);
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.multiple = isDirectory; // Allow multiple files for directory upload
+      input.accept = 'image/*';
       
-      // Only set the error image if it's not already set to prevent infinite loops
-      if (!img.src.startsWith('data:image/svg+xml')) {
-        // Log the error to help with debugging
-        console.error('Image failed to load, showing error placeholder');
+      // Enable directory upload for webkit browsers
+      if (isDirectory && 'webkitdirectory' in input) {
+        (input as any).webkitdirectory = true;
+      }
+      
+      input.onchange = (e: Event) => {
+        const target = e.target as HTMLInputElement;
+        if (target.files && target.files.length > 0) {
+          if (isDirectory) {
+            handleDirectoryUpload(target.files, imageType);
+          } else {
+            handleFileUpload(target.files[0], imageType);
+          }
+        }
+      };
+      
+      input.click();
+    };
+    
+    const isValidImageFile = (file: File): boolean => {
+      const name = (file?.name || '').toLowerCase();
+      if (!name || name.startsWith('.')) return false;
+      const ext = name.includes('.') ? name.split('.').pop() as string : '';
+      return ['png', 'jpg', 'jpeg'].includes(ext);
+    };
+    
+    // Handle single file upload
+    const handleFileUpload = async (file: File, imageType: string) => {
+      if (!isValidImageFile(file)) {
+        message.warning('不支持的文件类型，已跳过');
+        return;
+      }
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('image_type', imageType);
+      
+      try {
+        console.log('Uploading file:', file.name, 'type:', imageType, 'size:', file.size, 'bytes');
         
-        // Create a simple error placeholder SVG with more visible error information
-        const svg = `
-          <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 200 100" fill="#f8f8f8" stroke="#ff4d4f" stroke-width="2">
-            <rect x="2" y="2" width="196" height="96" rx="4" fill="#fff2f0" stroke-width="2"/>
-            <text x="50%" y="40%" text-anchor="middle" font-family="Arial" font-size="12" fill="#ff4d4f">Image failed to load</text>
-            <text x="50%" y="60%" text-anchor="middle" font-family="Arial" font-size="10" fill="#999">${img.alt || 'No description'}</text>
-          </svg>
-        `;
-        const svgData = `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(svg)))}`;
-        img.src = svgData;
-        img.onerror = null; // Prevent infinite loop
+        // Log form data for debugging
+        for (let [key, value] of formData.entries()) {
+          console.log(key, value);
+        }
+        
+        // Remove the /api prefix since it's already included in the base URL
+        const response = await api.post('/images/upload', formData, {
+          timeout: 30000,
+          validateStatus: (status) => status < 500
+        });
+        
+        console.log('Upload response:', response);
+        
+        // Handle different response formats
+        if (!response) {
+          throw new Error('No response from server');
+        }
+        
+        // Check for error status
+        if (response.status >= 400) {
+          const errorData = response.data || {};
+          throw new Error(
+            errorData.message || 
+            errorData.error || 
+            `Server responded with status ${response.status}`
+          );
+        }
+        
+        // Check for success flag in response
+        if (response.data && response.data.success === false) {
+          throw new Error(response.data.message || '上传失败');
+        }
+        
+        // If we have data in the response, add it to the images array
+        if (response.data && response.data.data) {
+          // Make sure the response data has the correct structure
+          const newImage = response.data.data;
+          if (newImage && !newImage.url && newImage.local_path) {
+            // Ensure the URL is properly constructed
+            newImage.url = `${import.meta.env.VITE_API_BASE_URL || ''}${newImage.local_path}`;
+          }
+          // Add the new image to the beginning of the array
+          images.value = [newImage, ...images.value];
+        }
+        
+        message.success('图片上传成功');
+        await fetchImages();
+      } catch (error: any) {
+        console.error('Upload error details:', {
+          name: error.name,
+          message: error.message,
+          response: error.response?.data,
+          stack: error.stack
+        });
+        
+        let errorMessage = '图片上传失败，请稍后重试';
+        
+        if (error.response) {
+          // The request was made and the server responded with a status code
+          // that falls out of the range of 2xx
+          const { data, status } = error.response;
+          errorMessage = data?.message || data?.error || `服务器错误 (${status})`;
+        } else if (error.request) {
+          // The request was made but no response was received
+          errorMessage = '无法连接到服务器，请检查网络连接';
+        } else if (error.code === 'ECONNABORTED') {
+          errorMessage = '请求超时，请稍后重试';
+        } else if (error.message) {
+          errorMessage = error.message;
+        }
+        
+        console.error('上传失败:', errorMessage);
+        message.error(`上传失败: ${errorMessage}`);
+      }
+    };
+    
+    // Handle directory upload
+    const handleDirectoryUpload = async (files: FileList, imageType: string) => {
+      const allFiles = Array.from(files);
+      const validFiles = allFiles.filter(isValidImageFile);
+      const skippedCount = allFiles.length - validFiles.length;
+      let successCount = 0;
+      let failCount = 0;
+      for (const file of validFiles) {
+        try {
+          await uploadFile(file, imageType);
+          successCount += 1;
+        } catch (e: any) {
+          failCount += 1;
+        }
+      }
+      await fetchImages();
+      if (successCount > 0) {
+        message.success(`已上传 ${successCount} 个文件`);
+      }
+      if (skippedCount > 0) {
+        message.warning(`已跳过 ${skippedCount} 个非图片文件`);
+      }
+      if (failCount > 0) {
+        message.error(`上传失败 ${failCount} 个文件`);
+      }
+    };
+    
+    // Helper function to upload a single file
+    const uploadFile = async (file: File, imageType: string) => {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('image_type', imageType);
+      
+      const response = await api.post('/images/upload', formData, {
+        timeout: 60000
+      });
+      
+      if (response.data && response.data.success === false) {
+        throw new Error(response.data.message || 'Upload failed');
+      }
+      
+      return response.data;
+    };
+
+    // Fetch images from API
+    const fetchImages = async () => {
+      try {
+        loading.value = true;
+        const params: any = {};
+        
+        if (imageTypeFilter.value !== 'all') {
+          params.image_type = imageTypeFilter.value;
+        }
+        
+        let response = await api.get('/images', { params });
+        const payload = response?.data || {};
+        const items = Array.isArray(payload?.data)
+          ? payload.data
+          : Array.isArray(payload?.items)
+            ? payload.items
+            : Array.isArray(payload?.data?.items)
+              ? payload.data.items
+              : [];
+        let normalized = items.map((img: any) => ({
+          ...img,
+          url: getImageUrl(img)
+        }));
+        if (imageTypeFilter.value !== 'all') {
+          const wanted = imageTypeFilter.value;
+          normalized = normalized.filter((it: any) => {
+            const t = it?.image_type || 'general';
+            return t === wanted;
+          });
+        }
+        images.value = normalized;
+      } catch (error: any) {
+        try {
+          const fallback = await api.get('/images');
+          const payload = fallback?.data || {};
+          const items = Array.isArray(payload?.data)
+            ? payload.data
+            : Array.isArray(payload?.items)
+              ? payload.items
+              : Array.isArray(payload?.data?.items)
+                ? payload.data.items
+                : [];
+          let normalized = items.map((img: any) => ({
+            ...img,
+            url: getImageUrl(img)
+          }));
+          if (imageTypeFilter.value !== 'all') {
+            const wanted = imageTypeFilter.value;
+            normalized = normalized.filter((it: any) => (it?.image_type || 'general') === wanted);
+          }
+          images.value = normalized;
+        } catch (e2: any) {
+          console.error('Failed to fetch images:', error);
+          const errorMessage = e2.response?.data?.message || '获取图片列表失败';
+          message.error(errorMessage);
+        }
+      } finally {
+        loading.value = false;
       }
     };
 
+    // Default directories for auto-scan by image type
+    const defaultLocations = ref<Record<string, string>>({
+      general: '',
+      advertising_campaign: '',
+      advertising_rule: ''
+    });
+
+    const basePaths = ref<{ upload_folder: string; output_folder: string }>({
+      upload_folder: '',
+      output_folder: ''
+    });
+
+    const loadBasePaths = async () => {
+      try {
+        const res = await api.get('/images/base-paths');
+        const data = res?.data?.data || res?.data || {};
+        basePaths.value.upload_folder = data.upload_folder || 'upload/images';
+        basePaths.value.output_folder = data.output_folder || 'output/images';
+      } catch (e) {
+        basePaths.value.upload_folder = 'upload/images';
+        basePaths.value.output_folder = 'output/images';
+      }
+    };
+
+    const loadDefaultLocations = async () => {
+      try {
+        const res = await api.get('/images/default-locations');
+        const list = Array.isArray(res?.data?.data) ? res.data.data : res?.data || [];
+        list.forEach((item: any) => {
+          if (item?.image_type && item?.directory) {
+            defaultLocations.value[item.image_type] = item.directory;
+          }
+        });
+      } catch (e) {
+        console.warn('加载默认目录失败', e);
+      }
+    };
+
+    const saveDefaultLocations = async () => {
+      const types = Object.keys(defaultLocations.value);
+      const pending = types.filter(t => defaultLocations.value[t]);
+      if (pending.length === 0) {
+        message.warning('请填写至少一个目录');
+        return;
+      }
+      const loadingMsg = message.loading('正在保存并加载目录...', { duration: 0 });
+      try {
+        for (const t of pending) {
+          const val = defaultLocations.value[t] || '';
+          const isAbs = val.startsWith('/') || /^[A-Za-z]:\\/.test(val);
+          if (isAbs) {
+            await api.post('/images/default-location', {
+              image_type: t,
+              directory: val
+            });
+          }
+        }
+        message.success('默认目录已保存并加载');
+        showDefaultDirModal.value = false;
+        await fetchImages();
+      } catch (err: any) {
+        console.error('保存默认目录失败', err);
+        message.error(err?.response?.data?.message || '保存默认目录失败');
+      } finally {
+        loadingMsg.destroy();
+      }
+    };
+
+    const scanConfiguredDirectories = async () => {
+      const entries = Object.entries(defaultLocations.value).filter(([_, dir]) => !!dir);
+      for (const [type, dir] of entries) {
+        try {
+          await api.post('/images/scan-directory', { directory: dir, image_type: type });
+        } catch (e) {
+          console.warn(`扫描目录失败: ${type} -> ${dir}`, e);
+        }
+      }
+    };
+
+    const selectCurrentFolder = async (type: string) => {
+      const pickWithInput = () => new Promise<FileList | null>((resolve) => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        (input as any).webkitdirectory = true;
+        input.onchange = (e: Event) => {
+          const target = e.target as HTMLInputElement;
+          resolve(target.files || null);
+        };
+        input.click();
+      });
+
+      const uploadFiles = async (files: FileList | null) => {
+        if (!files || files.length === 0) return 0;
+        const arr = Array.from(files);
+        const root = (arr[0] as any).webkitRelativePath ? String((arr[0] as any).webkitRelativePath).split('/')[0] : '选定目录';
+        defaultLocations.value[type] = `browser://${root}`;
+        let count = 0;
+        for (const f of arr) {
+          if (isValidImageFile(f)) {
+            try {
+              await uploadFile(f as File, type);
+              count += 1;
+            } catch {}
+          }
+        }
+        return count;
+      };
+
+      try {
+        if ((window as any).showDirectoryPicker) {
+          const dirHandle = await (window as any).showDirectoryPicker();
+          const files: File[] = [];
+          if (dirHandle && dirHandle.values) {
+            for await (const handle of dirHandle.values()) {
+              if (handle.kind === 'file') {
+                const file = await handle.getFile();
+                files.push(file);
+              }
+            }
+          } else if (dirHandle && dirHandle.entries) {
+            for await (const [name, handle] of (dirHandle as any).entries()) {
+              if (handle.kind === 'file') {
+                const file = await handle.getFile();
+                files.push(file);
+              }
+            }
+          }
+          defaultLocations.value[type] = `browser://${dirHandle.name || '选定目录'}`;
+          let count = 0;
+          for (const f of files) {
+            if (isValidImageFile(f)) {
+              try {
+                await uploadFile(f, type);
+                count += 1;
+              } catch {}
+            }
+          }
+          if (count > 0) {
+            message.success(`已从目录加载 ${count} 张图片`);
+            await fetchImages();
+          } else {
+            message.info('目录中没有可用图片');
+          }
+        } else {
+          const files = await pickWithInput();
+          const count = await uploadFiles(files);
+          if (count > 0) {
+            message.success(`已从目录加载 ${count} 张图片`);
+            await fetchImages();
+          } else {
+            message.info('目录中没有可用图片');
+          }
+        }
+      } catch (e) {
+        message.error('选择目录失败');
+      }
+    };
+
+    // Reset preview state
+    const resetPreview = () => {
+      previewImageUrl.value = '';
+      scale.value = 1;
+      rotate.value = 0;
+      position.value = { x: 0, y: 0 };
+      isDragging.value = false;
+    };
+
+    // Initial data fetch
     onMounted(() => {
+      fetchImages();
+      loadBasePaths();
+      loadDefaultLocations().then(scanConfiguredDirectories);
+    });
+    watch(imageTypeFilter, () => {
       fetchImages();
     });
 
+    // Make sure handleDirectoryUpload is available in the template
+    const handleDirectoryUploadWrapper = async (files: FileList, imageType: string) => {
+      return handleDirectoryUpload(files, imageType);
+    };
+
     return {
-      images,
+      // State
       viewMode,
-      uploadOptions,
       showPreview,
+      showDefaultDirModal,
+      showUploadMenu,
       previewImageUrl,
-      handleUploadSelect,
-      handleFileSelect,
+      images,
+      loading,
+      imageTypeFilter,
+      imageTypeOptions,
+      uploadOptions,
+      zoomLevel,
+      imageStyle,
+      defaultLocations,
+      basePaths,
+      saveDefaultLocations,
+      loadDefaultLocations,
+      loadBasePaths,
+      scanConfiguredDirectories,
+      selectCurrentFolder,
+      
+      // Methods
       getImageUrl,
       formatFileSize,
       formatDate,
-      confirmDelete,
-      handleImageError,
       showImagePreview,
-      GridOutline,
-      ListOutline,
-      DownloadOutline,
-      TrashOutline,
+      handleZoom,
+      fetchImages,
+      getImageTypeIcon: (type: string) => {
+        const icons: Record<string, any> = {
+          advertising_campaign: MegaphoneOutline,
+          advertising_rule: DocumentTextOutline,
+          default: ImagesOutline
+        };
+        return icons[type || ''] || icons.default;
+      },
+      getImageTypeLabel: (type: string) => {
+        const labels: Record<string, string> = {
+          advertising_campaign: '活动配图',
+          advertising_rule: '广告规则',
+          default: '普通图片'
+        };
+        return labels[type || ''] || labels.default;
+      },
+      handleImageError,
+      confirmDelete,
+      confirmDeleteAll,
+      handleUploadSelect,
+      handleDirectoryUpload: handleDirectoryUploadWrapper,
+      downloadImage,
+      zoomIn,
+      zoomOut,
+      resetZoom,
+      rotateLeft,
+      rotateRight,
+      startDrag,
+      handleDrag,
+      endDrag,
+      
+      // Icons
       CloudUploadOutline,
       ChevronDown,
-      FolderOpenOutline,
-      ImageOutline,
+      DownloadOutline,
+      Close: CloseOutline,
       SearchOutline,
-      Close
+      RefreshOutline,
+      AddOutline,
+      RemoveOutline,
+      GridOutline,
+      ListOutline,
+      TrashOutline,
+      
+      // Components
+      NList,
+      NListItem,
+      NThing,
+      NRadioGroup,
+      NRadioButton,
+      NIcon,
+      NButton,
+      NButtonGroup,
+      NTooltip,
+      NTag,
+      NEmpty,
+      NSelect,
+      NDropdown,
+      NModal
     };
   },
 });
@@ -603,18 +1326,25 @@ export default defineComponent({
 .preview-modal .n-card {
   display: flex;
   flex-direction: column;
+  width: 100%;
   height: 100%;
+  max-width: 100%;
+  margin: 0;
   padding: 0;
-  overflow: hidden;
-  background: #1e1e1e;
+  background: transparent;
+  box-shadow: none;
+  border-radius: 0;
 }
 
 .preview-header {
-  position: absolute;
-  top: 0;
-  right: 0;
-  z-index: 10;
-  padding: 8px;
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 1000;
+  padding: 0;
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 50%;
+  backdrop-filter: blur(4px);
 }
 
 .close-button {
@@ -637,23 +1367,31 @@ export default defineComponent({
 }
 
 .preview-content {
-  flex: 1;
-  display: flex;
-  padding: 0;
-  margin: 0;
-  height: 100%;
-  overflow: hidden;
-}
-
-.image-container {
-  flex: 1;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 0;
   margin: 0;
-  overflow: auto;
-  background: #1e1e1e;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.9);
+  cursor: zoom-out;
+}
+
+.image-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  margin: 0;
+  overflow: hidden;
 }
 
 .preview-image {
@@ -662,12 +1400,53 @@ export default defineComponent({
   object-fit: contain;
   padding: 0;
   margin: 0;
-  transition: transform 0.2s;
-  cursor: zoom-out;
+  transition: transform 0.2s ease;
+  will-change: transform;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-drag: none;
 }
 
-.preview-image:hover {
-  transform: scale(1.01);
+.preview-controls {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 12px;
+  padding: 8px 16px;
+  background: rgba(0, 0, 0, 0.7);
+  border-radius: 24px;
+  backdrop-filter: blur(8px);
+  z-index: 100;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.preview-controls .n-button {
+  transition: all 0.2s ease;
+}
+
+.preview-controls .n-button:not(:disabled):hover {
+  transform: scale(1.1);
+}
+
+.preview-controls .n-button:active {
+  transform: scale(0.95);
+}
+
+/* Hide controls when not interacting */
+.preview-content:not(:hover) .preview-controls {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-50%) translateY(20px);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.preview-content:hover .preview-controls {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(-50%) translateY(0);
+  transition: opacity 0.3s ease 0.3s, transform 0.3s ease 0.3s;
 }
 
 .empty-preview {
@@ -748,11 +1527,17 @@ body, html {
 /* Main content wrapper - full width with no max-width constraint */
 .content-wrapper {
   width: 100%;
+  height: 100%;
   margin: 0;
-  padding: 24px;
+  padding: 0;
   box-sizing: border-box;
-  overflow-y: auto;
-  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.content-wrapper > *:not(.list-view-container) {
+  padding: 0 24px;
 }
 
 /* Grid View - Full width grid */
@@ -769,25 +1554,135 @@ body, html {
 /* List View - Full width */
 .list-view-container {
   width: 100%;
-  padding: 16px 0 0 0;
+  padding: 0;
   margin: 0;
   box-sizing: border-box;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
 .list-header {
   display: flex;
-  padding: 12px 16px;
+  padding: 12px 24px;
   background-color: #f8f9fa;
-  border-radius: 8px;
+  border-radius: 8px 8px 0 0;
   font-weight: 600;
-  margin-bottom: 12px;
+  margin: 0;
+  align-items: center;
+  min-width: 100%;
+  border-bottom: 1px solid var(--border-color);
 }
 
 .header-item {
-  padding: 0 8px;
+  padding: 0 12px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* List item styles */
+.image-list {
+  flex: 1;
+  border-radius: 0 0 8px 8px;
+  overflow: auto;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  display: flex;
+  flex-direction: column;
+  min-height: 0; /* Allows the list to shrink below its content size */
+}
+
+.image-list-item {
+  transition: background-color 0.2s;
+  flex-shrink: 0;
+}
+
+.image-list-item:hover {
+  background-color: #f8f9fa;
+}
+
+.list-item-content {
+  width: 100%;
+}
+
+.list-item-row {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 12px 0;
+}
+
+.list-item-cell {
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+}
+
+.list-image-container {
+  width: 60px;
+  height: 60px;
+  border-radius: 4px;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: #f5f5f5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.list-image-preview {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  cursor: pointer;
+}
+
+.list-item-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.image-name {
+  font-weight: 500;
+  color: var(--n-text-color);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+
+.source-tag {
+  flex-shrink: 0;
+}
+
+.detail-value {
+  color: var(--n-text-color-secondary);
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.list-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  width: 100%;
+}
+
+/* Make sure the list items match header width */
+:deep(.n-list-item) {
+  padding: 0 !important;
+}
+
+:deep(.n-list-item__main) {
+  width: 100%;
+  padding: 0 24px;
+}
+
+:deep(.n-list-item.n-list-item--hoverable:hover) {
+  background-color: #f8f9fa;
 }
 
 /* Responsive adjustments */
@@ -863,10 +1758,32 @@ body, html {
   .list-view-container {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
+    padding: 8px 0;
   }
   
-  .list-header {
-    min-width: 900px; /* Ensure header matches content width when scrolling */
+  .list-header,
+  :deep(.n-list-item__main) {
+    min-width: 900px; /* Ensure header and content match width when scrolling */
+    padding: 12px 16px;
+  }
+  
+  .image-name {
+    max-width: 120px;
+  }
+  
+  .list-image-container {
+    width: 50px;
+    height: 50px;
+  }
+  
+  .header-item,
+  .list-item-cell {
+    padding: 0 8px;
+    font-size: 13px;
+  }
+  
+  .detail-value {
+    font-size: 13px;
   }
 }
 
@@ -884,6 +1801,58 @@ body, html {
   width: 100%;
   gap: 20px;
   position: relative;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.filter-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.filter-label {
+  color: var(--detail-label-color);
+  font-size: 14px;
+}
+
+.type-select {
+  width: 200px;
+}
+
+.delete-all {
+  margin-left: auto;
+}
+
+.default-dir {
+  margin-left: 8px;
+}
+
+.default-dir-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.default-dir-form .form-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.default-dir-form .form-label {
+  width: 100px;
+  color: var(--detail-label-color);
+}
+
+.default-dir-form .form-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
 }
 
 .page-title {
