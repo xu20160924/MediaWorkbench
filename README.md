@@ -1,4 +1,4 @@
-# 小红书内容自动化助手 (XHS Automate)
+# AI 自动化工作台 (MediaWorkbench)
 
 ![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)
 ![Vue.js](https://img.shields.io/badge/Vue.js-3.x-green.svg)
@@ -7,7 +7,7 @@
 
 ## 📖 项目简介
 
-XHS Automate 是一个基于 AI 的小红书内容自动化创作与发布工具，集成了图文内容生成和自动化发布功能。该工具旨在帮助创作者提高内容创作效率，通过 AI 技术实现内容的智能生成和管理。
+MediaWorkbench 是一个基于 AI 的多媒体内容自动化创作与发布工具，集成了图文内容生成和自动化发布功能。该工具旨在帮助创作者提高内容创作效率，通过 AI 技术实现内容的智能生成和管理。
 
 ## 🌟 主要功能
 
@@ -102,7 +102,7 @@ xhs-automate/
 │   │   ├── api/       # API 接口
 │   │   ├── components/# Vue 组件
 │   │   ├── views/     # 页面视图
-│   │   ├── router/    # 路由配��
+│   │   ├── router/    # 路由配置
 │   │   └── styles/    # 样式文件
 │   └── public/        # 静态资源
 ```
@@ -145,7 +145,7 @@ xhs-automate/
 如有任何问题或建议，欢迎通过以下方式联系：
 
 - 提交 Issue
-- 发送邮件至：[wangchen2588@gmail.com]
+- 发送邮件至：[xu20151211@gmail.com]
 
 ---
 
