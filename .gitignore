@@ -181,3 +181,5 @@ cython_debug/
 .DS_Store
 package-lock.json
 app.db
+*.png
+*.jpg

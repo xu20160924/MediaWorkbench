@@ -1,4 +1,5 @@
 // API 配置
+// 使用相对路径，通过 Vite proxy 转发到后端
 export const API_ENDPOINT = '/api'
 
 // API 响应类型定义

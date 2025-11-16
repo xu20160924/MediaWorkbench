@@ -9,6 +9,12 @@
         <div class="comfyui-status" :class="{ 'is-error': !comfyuiRunning }">
           {{ comfyuiRunning ? 'ComfyUI 运行中' : 'ComfyUI 未启动' }}
         </div>
+        <n-switch
+          v-model:checked="isDarkMode"
+          @update:checked="toggleDarkMode"
+          size="small"
+          class="theme-switch"
+        />
       </div>
     </header>
     <div class="main-container">
@@ -27,18 +33,27 @@ import { defineComponent, ref, onMounted } from 'vue'
 import NavMenu from './NavMenu.vue'
 import { checkHealth } from '../api/functions'
 import { useRoute } from 'vue-router'
-import { useMessage } from 'naive-ui'
+import { useMessage, NSwitch } from 'naive-ui'
+import { useThemeStore } from '../stores/theme'
 
 export default defineComponent({
   name: 'AppContent',
   components: {
-    NavMenu
+    NavMenu,
+    NSwitch
   },
   setup() {
     const route = useRoute()
     const message = useMessage()
     const serviceAvailable = ref(false)
     const comfyuiRunning = ref(false)
+    const themeStore = useThemeStore()
+    const isDarkMode = ref(themeStore.isDark)
+
+    const toggleDarkMode = () => {
+      themeStore.toggleTheme()
+      isDarkMode.value = themeStore.isDark
+    }
     
     const updateTitle = (routeName: string) => {
       const baseTitle = 'AI 自动化平台'
@@ -91,7 +106,9 @@ export default defineComponent({
 
     return {
       serviceAvailable,
-      comfyuiRunning
+      comfyuiRunning,
+      isDarkMode,
+      toggleDarkMode
     }
   }
 })
@@ -174,6 +191,11 @@ h1 {
   overflow: hidden;
 }
 
+.theme-switch {
+  margin-left: 1.5rem;
+  cursor: pointer;
+}
+
 @media (max-width: 768px) {
   .main-container {
     flex-direction: column;
@@ -209,4 +231,4 @@ h1 {
     padding: 1rem;
   }
 }
-</style> 
+</style>

@@ -13,8 +13,8 @@ class Workflow(db.Model):
     file_size = db.Column(db.Integer, nullable=False)
     status = db.Column(db.Boolean, nullable=False, default=True)
     content_md5 = db.Column(db.String(32), unique=True)
-    input_vars = db.Column(db.ARRAY(db.String))
-    output_vars = db.Column(db.ARRAY(db.String))
+    input_vars = db.Column(db.JSON)
+    output_vars = db.Column(db.JSON)
     preview_image = db.Column(db.Text)
     
     @property

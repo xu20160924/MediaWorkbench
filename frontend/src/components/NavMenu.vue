@@ -32,6 +32,10 @@
       <i class="icon template-icon"></i>
       <span>提示词模板</span>
     </router-link>
+    <router-link to="/llm-models" class="nav-item">
+      <i class="icon llm-icon"></i>
+      <span>LLM 模型管理</span>
+    </router-link>
   </nav>
 </template>
 
@@ -113,6 +117,10 @@
 
 .template-icon {
   background-image: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><path d="M64 32C28.7 32 0 60.7 0 96V416c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V160c0-8.5-3.4-16.6-9.4-22.6L310.6 9.4C304.6 3.4 296.5 0 288 0H64zm0 64H256V192c0 17.7 14.3 32 32 32H384V416c0 17.7-14.3 32-32 32H64c-17.7 0-32-14.3-32-32V96zm256 64V64l96 96H320zM96 256h256v32H96V256zm0 64h256v32H96V320z" fill="currentColor"/></svg>');
+}
+
+.llm-icon {
+  background-image: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><path d="M256 32C132.3 32 32 132.3 32 256s100.3 224 224 224 224-100.3 224-224S379.7 32 256 32zm0 80c48.6 0 88 39.4 88 88s-39.4 88-88 88-88-39.4-88-88 39.4-88 88-88zm0 352c-58.7 0-110.9-26.2-145.6-67.7 17.8-54.9 70.2-94.3 131.6-94.3h28c61.4 0 113.8 39.4 131.6 94.3C366.9 457.8 314.7 464 256 464z" fill="currentColor"/></svg>');
 }
 
 @media (max-width: 768px) {

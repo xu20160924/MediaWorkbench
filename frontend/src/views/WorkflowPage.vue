@@ -440,7 +440,14 @@ export default defineComponent({
     const getImageUrl = (path: string) => {
       if (!path) return ''
       if (path.startsWith('http')) return path
-      // 直接返回完整路径
+      // 处理上传和输出图片路径，确保URL格式正确
+      if (path.startsWith('upload/')) {
+        const filename = path.replace('upload/', '')
+        return `/images/upload/${filename.replace('images/', '')}`
+      } else if (path.startsWith('output/')) {
+        const filename = path.replace('output/', '')
+        return `/images/output/${filename.replace('images/', '')}`
+      }
       return path
     }
 
@@ -768,4 +775,4 @@ export default defineComponent({
 :deep(.n-data-table) {
   max-width: 100%;
 }
-</style> 
+</style>

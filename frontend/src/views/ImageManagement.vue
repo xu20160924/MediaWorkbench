@@ -119,8 +119,16 @@
             <span>下载图片</span>
           </n-tooltip>
         </div>
-      </div>
-    </n-modal>
+  </div>
+</n-modal>
+
+<!-- Participation Prompt Modal -->
+<n-modal v-model:show="showPromptModal" preset="card" title="参与广告提示词" :mask-closable="true" :bordered="false">
+  <div class="prompt-content">{{ participationPrompt }}</div>
+  <div class="form-actions">
+    <n-button type="primary" @click="showPromptModal=false">关闭</n-button>
+  </div>
+</n-modal>
 
     <!-- Default Directory Modal -->
     <n-modal 
@@ -224,16 +232,20 @@
               </n-radio-button>
             </n-radio-group>
           </div>
+          
         </div>
       </div>
 
       <div v-if="viewMode === 'grid'" class="image-grid">
         <div v-for="(image, index) in images" :key="'grid-' + index" class="image-item">
-          <div class="image-preview-container" @click="showImagePreview(image)">
+          <div class="image-preview-container" @click="selectMode ? onSelect(image) : showImagePreview(image)">
             <img :src="getImageUrl(image)" :alt="image.name" class="image-preview" @error="handleImageError" />
             <div class="preview-overlay">
               <n-icon size="24"><SearchOutline /></n-icon>
               <span>预览</span>
+            </div>
+            <div v-if="selectMode && isSelectable(image)" class="select-mask" :class="{ selected: isSelected(image) }">
+              <span>{{ isSelected(image) ? '已选择' : '选择' }}</span>
             </div>
           </div>
           <div class="image-info">
@@ -243,6 +255,8 @@
               <span>{{ formatDate(image.created_at) }}</span>
             </div>
             <div class="image-actions">
+              <n-tag v-if="image.participated" type="success">已参与</n-tag>
+              <n-button v-if="image.image_type==='advertising_rule'" size="small" type="primary" ghost @click="toggleParticipated(image)">参与</n-button>
               <n-button size="small" type="error" ghost @click="confirmDelete(image)">删除</n-button>
             </div>
           </div>
@@ -273,13 +287,14 @@
           <!-- List Content -->
           <n-list v-else class="image-list" hoverable>
             <!-- Image Items -->
-            <n-list-item v-for="(image, index) in images" :key="'list-' + index" class="image-list-item">
+            <n-list-item v-for="(image, index) in images" :key="'list-' + index" class="image-list-item" @click="selectMode ? onSelect(image) : undefined">
               <n-thing>
                 <div class="list-item-content">
                   <div class="list-item-row">
                     <div class="list-item-cell" style="width: 60px;">
                       <div class="list-image-container">
                         <img :src="getImageUrl(image)" class="list-image-preview" @error="handleImageError" />
+                        <div v-if="selectMode && isSelectable(image)" class="select-badge" :class="{ selected: isSelected(image) }">{{ isSelected(image) ? '已选' : '选择' }}</div>
                       </div>
                     </div>
                     <div class="list-item-cell" style="flex: 2;">
@@ -313,6 +328,17 @@
                     
                     <div class="list-item-cell" style="width: 80px;">
                       <div class="list-actions">
+                        <n-tag v-if="image.participated" size="small" type="success">已参与</n-tag>
+                        <n-tooltip v-if="image.image_type==='advertising_rule'" trigger="hover">
+                          <template #trigger>
+                            <n-button text @click="toggleParticipated(image)">
+                              <template #icon>
+                                <n-icon><AddOutline /></n-icon>
+                              </template>
+                            </n-button>
+                          </template>
+                          <span>参与</span>
+                        </n-tooltip>
                         <n-tooltip trigger="hover">
                           <template #trigger>
                             <n-button text type="error" @click="confirmDelete(image)">
@@ -338,6 +364,7 @@
 
 <script lang="ts">
 import { defineComponent, ref, onMounted, computed, watch, h, Ref } from 'vue';
+import { useRouter } from 'vue-router';
 
 interface ImageItem {
   id?: string | number;
@@ -349,6 +376,11 @@ interface ImageItem {
   image_type?: string;
   source?: string;
   workflow_name?: string;
+  participated?: boolean;
+  variables?: {
+    participated?: boolean;
+    [key: string]: any;
+  };
 }
 
 interface Position {
@@ -440,6 +472,11 @@ export default defineComponent({
     const images = ref<ImageItem[]>([]);
     const loading = ref(false);
     const imageTypeFilter = ref('all');
+    const selectMode = ref(false);
+    const selectedRegular = ref<number[]>([]);
+    const selectedEvent = ref<number[]>([]);
+    const showPromptModal = ref(false);
+    const participationPrompt = ref('');
     
     // Image type options for the dropdown
     const imageTypeOptions = [
@@ -469,23 +506,67 @@ export default defineComponent({
       // Debug log the image object
       console.log('Image object:', JSON.parse(JSON.stringify(image)));
       
-      // If URL is directly provided, use it
-      if (image.url) {
-        console.log('Using direct URL:', image.url);
+      // Handle different URL properties from API
+      let imagePath = '';
+      
+      // Check for full URL first
+      if (image.url?.startsWith('http')) {
+        console.log('Using full URL from image.url:', image.url);
         return image.url;
       }
       
-      // Handle different possible path properties
-      const filePath = image.file_path || image.local_path || image.path || '';
-      if (!filePath) {
+      if (image.img_url?.startsWith('http')) {
+        console.log('Using full URL from image.img_url:', image.img_url);
+        return image.img_url;
+      }
+      
+      // Extract path from different properties
+      if (image.img_url) {
+        console.log('Using img_url property:', image.img_url);
+        imagePath = image.img_url;
+      } else if (image.url) {
+        console.log('Using URL property:', image.url);
+        imagePath = image.url;
+      } else {
+        // Handle different possible path properties
+        imagePath = image.file_path || image.local_path || image.path || '';
+      }
+      
+      if (!imagePath) {
         console.log('No valid path found in image object');
         return '';
       }
       
       const baseEnv = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/$/, '');
-      const devStaticBase = import.meta.env.DEV ? 'http://127.0.0.1:5002' : baseEnv;
-      const p = String(filePath).replace(/\\/g, '/');
-      // Map to backend static routes
+      // Ensure devStaticBase includes the /api prefix when in development mode
+      const devStaticBase = baseEnv;
+      let p = String(imagePath).replace(/\\/g, '/');
+      
+      // If the path is already a full URL, return it directly
+      if (p.startsWith('http')) {
+        console.log('Generated direct URL:', p);
+        return p;
+      }
+      
+      // Special handling for paths returned by the backend
+      // The backend returns relative paths like 'upload/images/filename.png'
+      // which correspond to actual files in UPLOAD_FOLDER
+      if (p.startsWith('upload/')) {
+        let filename = p.replace('upload/', '');
+        // 处理路径中的'images/'部分，避免重复
+        filename = filename.replace('images/', '');
+        const url = `${devStaticBase}/images/uploads/${filename}`;
+        console.log('Generated upload URL for backend path:', url);
+        return url;
+      } else if (p.startsWith('output/')) {
+        let filename = p.replace('output/', '');
+        // 处理路径中的'images/'部分，避免重复
+        filename = filename.replace('images/', '');
+        const url = `${devStaticBase}/images/output/${filename}`;
+        console.log('Generated output URL for backend path:', url);
+        return url;
+      }
+      
       // Uploads: handle both 'upload/images/<filename>' and '/uploads/<filename>'
       const uploadMatch = p.match(/(?:^|\/)upload\/images\/(.+)$/) || p.match(/(?:^|\/)uploads\/(.+)$/);
       if (uploadMatch && uploadMatch[1]) {
@@ -500,13 +581,18 @@ export default defineComponent({
         console.log('Generated output URL:', url);
         return url;
       }
-      // Fallback: direct http or base + path
-      if (p.startsWith('http')) {
-        console.log('Generated direct URL:', p);
-        return p;
+      
+      // Handle direct images paths without upload/ or output/ prefix (fixes images/images/... issue)
+      const imageMatch = p.match(/(?:^|\/)images\/(.+)$/);
+      if (imageMatch && imageMatch[1]) {
+        const url = `${devStaticBase}/images/${imageMatch[1]}`;
+        console.log('Generated direct image URL:', url);
+        return url;
       }
+      
+      // Fallback: base URL + path
       const normalized = p.startsWith('/') ? p.slice(1) : p;
-      const url = `${baseEnv}/${normalized}`;
+      const url = `${devStaticBase}/images/${normalized}`;
       console.log('Generated fallback URL:', url);
       return url;
     };
@@ -647,7 +733,7 @@ export default defineComponent({
             // Fallback to individual deletes if batch delete fails
             const total = images.value.length;
             let successCount = 0;
-            const errors: string[] = [];
+            const errors: Array<{id: number | string, name: string, error: string}> = [];
 
             for (const img of [...images.value]) { // Create a copy of the array to avoid modification during iteration
               try {
@@ -657,7 +743,12 @@ export default defineComponent({
                 loading.content = `正在删除图片 (${successCount}/${total})...`;
               } catch (error: any) {
                 console.error(`Failed to delete image ${img.id}:`, error);
-                errors.push(`图片 ${img.id} 删除失败: ${error.response?.data?.message || '未知错误'}`);
+                const errorMsg = error.response?.data?.message || error.message || '未知错误';
+                errors.push({
+                  id: img.id || 'unknown',
+                  name: img.name || '未命名',
+                  error: errorMsg
+                });
               }
             }
 
@@ -666,15 +757,17 @@ export default defineComponent({
               message.success(`成功删除 ${successCount} 张图片`);
             }
             if (errors.length > 0) {
-              message.error(`${errors.length} 张图片删除失败，请检查控制台`);
-              console.error('Failed to delete some images:', errors);
+              const errorDetails = errors.map(e => `  - ${e.name} (ID: ${e.id}): ${e.error}`).join('\n');
+              message.error(`${errors.length} 张图片删除失败，请检查控制台查看详情`);
+              console.error('删除失败的图片详情:\n', errorDetails);
+              console.error('完整错误信息:', errors);
             }
 
             // Refresh the list
             await fetchImages();
-          } catch (error) {
+          } catch (error: any) {
             console.error('Delete all failed:', error);
-            message.error('删除失败: ' + (error.response?.data?.message || '未知错误'));
+            message.error('删除失败: ' + (error?.response?.data?.message || error?.message || '未知错误'));
           } finally {
             loading.destroy();
           }
@@ -1117,6 +1210,8 @@ export default defineComponent({
     const scanConfiguredDirectories = async () => {
       const entries = Object.entries(defaultLocations.value).filter(([_, dir]) => !!dir);
       for (const [type, dir] of entries) {
+        const isAbs = String(dir).startsWith('/') || /^[A-Za-z]:\\/.test(String(dir));
+        if (!isAbs || String(dir).startsWith('browser://')) continue;
         try {
           await api.post('/images/scan-directory', { directory: dir, image_type: type });
         } catch (e) {
@@ -1228,6 +1323,117 @@ export default defineComponent({
       return handleDirectoryUpload(files, imageType);
     };
 
+    const router = useRouter();
+    
+    const handleParticipation = (img: ImageItem) => {
+      // Navigate to the participation page
+      router.push({
+        name: 'image-participation',
+        params: { id: img.id }
+      });
+    };
+    
+    const toggleParticipated = async (img: ImageItem) => {
+      try {
+        // Check if this is an advertising rule image (matching backend's ImageType.ADVERTISING_RULE.value)
+        if (img.image_type !== 'advertising_rule') {
+          message.warning('只有广告规则图片可以标记参与状态');
+          return;
+        }
+
+        // If not already participated, open the participation process
+        if (!img.participated) {
+          handleParticipation(img);
+          return;
+        }
+        
+        // If already participated, show confirmation before unparticipating
+        dialog.warning({
+          title: '确认取消参与',
+          content: '确定要取消参与此图片吗？',
+          positiveText: '确定',
+          negativeText: '取消',
+          onPositiveClick: async () => {
+            try {
+              await api.post(`/images/participate/${img.id}`, 
+                { participated: false },
+                { headers: { 'Content-Type': 'application/json' } }
+              );
+              
+              // Update the local state
+              images.value = images.value.map(it => 
+                it.id === img.id 
+                  ? { 
+                      ...it, 
+                      participated: false,
+                      variables: {
+                        ...(it.variables || {}),
+                        participated: false
+                      }
+                    } 
+                  : it
+              );
+              
+              message.success('已取消参与');
+            } catch (e: any) {
+              console.error('API Error:', e);
+              const errorMessage = e?.response?.data?.message || '操作失败';
+              message.error(`取消参与失败: ${errorMessage}`);
+            }
+          }
+        });
+      } catch (e) {
+        console.error('Unexpected error in toggleParticipated:', e);
+        message.error('发生未知错误，请稍后重试');
+      }
+    };
+
+    const isSelectable = (img: any) => ['general','advertising_campaign'].includes(img?.image_type || '');
+    const isSelected = (img: any) => {
+      const id = Number(img?.id || -1);
+      if ((img?.image_type || '') === 'general') return selectedRegular.value.includes(id);
+      if ((img?.image_type || '') === 'advertising_campaign') return selectedEvent.value.includes(id);
+      return false;
+    };
+    const onSelect = (img: any) => {
+      const id = Number(img?.id || -1);
+      const type = img?.image_type || '';
+      if (type === 'general') {
+        const idx = selectedRegular.value.indexOf(id);
+        if (idx >= 0) selectedRegular.value.splice(idx,1); else selectedRegular.value.push(id);
+      } else if (type === 'advertising_campaign') {
+        const idx = selectedEvent.value.indexOf(id);
+        if (idx >= 0) selectedEvent.value.splice(idx,1); else selectedEvent.value.push(id);
+      }
+    };
+    const toggleSelectMode = () => {
+      selectMode.value = !selectMode.value;
+    };
+    const generateParticipation = async () => {
+      const loadingMsg = message.loading('正在生成提示词...', { duration: 0 });
+      try {
+        const res = await api.post('/prompt/participation', {
+          regular_image_ids: selectedRegular.value,
+          event_image_ids: selectedEvent.value
+        });
+        participationPrompt.value = (res?.data?.data?.prompt) || (res?.data?.prompt) || '';
+        showPromptModal.value = true;
+      } catch (e: any) {
+        message.error(e?.response?.data?.message || '生成失败');
+      } finally {
+        loadingMsg.destroy();
+      }
+    };
+    const onQuickParticipate = async (img: any) => {
+      selectedRegular.value = [];
+      selectedEvent.value = [];
+      const id = Number(img?.id || -1);
+      const type = img?.image_type || '';
+      if (type === 'general') selectedRegular.value = [id];
+      else if (type === 'advertising_campaign') selectedEvent.value = [id];
+      await generateParticipation();
+    };
+
     return {
       // State
       viewMode,
@@ -1239,6 +1445,11 @@ export default defineComponent({
       loading,
       imageTypeFilter,
       imageTypeOptions,
+      selectMode,
+      showPromptModal,
+      participationPrompt,
+      selectedRegular,
+      selectedEvent,
       uploadOptions,
       zoomLevel,
       imageStyle,
@@ -1251,6 +1462,7 @@ export default defineComponent({
       selectCurrentFolder,
       
       // Methods
+      toggleParticipated,
       getImageUrl,
       formatFileSize,
       formatDate,
@@ -1854,6 +2066,37 @@ body, html {
   justify-content: flex-end;
   margin-top: 8px;
 }
+
+.participation-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.counts { color: #888; }
+.select-mask {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  background: rgba(255,76,104,0.85);
+  color: #fff;
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+.select-mask.selected { background: rgba(76,175,80,0.85); }
+.list-image-container { position: relative; }
+.select-badge {
+  position: absolute;
+  bottom: 4px;
+  left: 4px;
+  background: rgba(255,76,104,0.85);
+  color: #fff;
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+.select-badge.selected { background: rgba(76,175,80,0.85); }
+.prompt-content { white-space: pre-wrap; line-height: 1.6; }
 
 .page-title {
   position: absolute;

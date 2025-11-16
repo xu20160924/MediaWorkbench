@@ -3,13 +3,23 @@ from enum import Enum
 from app.extensions import db
 
 class ImageSource(Enum):
-    UPLOAD = 'upload'
-    LOCAL_DIR = 'local_dir'
+    upload = 'upload'
+    local_dir = 'local_dir'
+    generated = 'generated'
 
 class ImageType(Enum):
-    GENERAL = 'general'
-    ADVERTISING = 'advertising_campaign'
-    ADVERTISING_RULE = 'advertising_rule'
+    general = 'general'
+    advertising = 'advertising_campaign'
+    advertising_rule = 'advertising_rule'
+
+    # Allow case-insensitive mapping from database values
+    @classmethod
+    def _missing_(cls, value):
+        if isinstance(value, str):
+            for member in cls:
+                if member.value == value.lower():
+                    return member
+        return super()._missing_(value)
 
 class Image(db.Model):
     __tablename__ = 'images'
@@ -23,12 +33,12 @@ class Image(db.Model):
     variables = db.Column(db.JSON)
     source = db.Column(
         db.Enum(ImageSource, native_enum=False, values_callable=lambda x: [e.value for e in x]),
-        default=ImageSource.UPLOAD,
+        default=ImageSource.upload,
         nullable=False
     )
     image_type = db.Column(
         db.Enum(ImageType, native_enum=False, values_callable=lambda x: [e.value for e in x]),
-        default=ImageType.GENERAL,
+        default=ImageType.general,
         nullable=False
     )
     local_path = db.Column(db.String(500), nullable=True)  # Only used when source is LOCAL_DIR
@@ -49,7 +59,8 @@ class Image(db.Model):
             'variables': self.variables,
             'source': self.source.value if hasattr(self.source, 'value') else self.source,
             'image_type': self.image_type.value if hasattr(self.image_type, 'value') else self.image_type,
-            'local_path': self.local_path
+            'local_path': self.local_path,
+            'participated': (self.variables or {}).get('participated', False)
         }
 
 # 默认目录配置，用于为不同图片类型设置本地扫描目录

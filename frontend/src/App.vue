@@ -2,7 +2,7 @@
   <div class="app">
     <n-message-provider>
       <n-dialog-provider>
-        <n-config-provider>
+        <n-config-provider :theme="themeStore.isDark ? darkTheme : undefined">
           <AppContent />
         </n-config-provider>
       </n-dialog-provider>
@@ -13,10 +13,18 @@
 <script lang="ts">
 import { defineComponent } from 'vue'
 import AppContent from './components/AppContent.vue'
+import { darkTheme } from 'naive-ui'
+import { useThemeStore } from './stores/theme'
 
 export default defineComponent({
   components: {
     AppContent
+  },
+  setup() {
+    const themeStore = useThemeStore()
+    return {
+      themeStore
+    }
   }
 })
 </script>

@@ -610,7 +610,9 @@ export default defineComponent({
       if (filename.startsWith('http')) {
         return filename
       }
-      return filename.startsWith('/') ? filename : `/images/${filename}`
+      const path = filename.startsWith('/') ? filename : `/images/${filename}`;
+      // Fix duplicate 'images/' in URL when path starts with 'upload/images/' or 'output/images/'
+      return path.replace('/images/upload/images/', '/images/upload/').replace('/images/output/images/', '/images/output/');
     },
 
     async loadHistoryImages() {

@@ -1,4 +1,4 @@
-from flask import Blueprint, request, send_from_directory, jsonify, current_app
+from flask import Blueprint, request, send_from_directory, jsonify, current_app, make_response
 from flask_cors import cross_origin
 from werkzeug.utils import secure_filename
 from pathlib import Path
@@ -18,8 +18,8 @@ from app.models.workflow import Workflow
 from app.models.variable_definitions import VariableDefinitions
 from app.models.workflow_variable import WorkflowVariable
 
-# Create the blueprint without the URL prefix since it's already added in __init__.py
-bp = Blueprint('image', __name__)
+# Create the blueprint with /api prefix to match frontend API calls
+bp = Blueprint('image', __name__, url_prefix='/api')
 
 def allowed_file(filename):
     return '.' in filename and \
@@ -33,7 +33,7 @@ def scan_image_directory():
         directory = data.get('directory')
         image_type = data.get('image_type')
 
-        if not directory or not os.path.isdir(directory):
+        if not directory:
             return error_response('无效的目录路径')
 
         image_type_enum = None
@@ -41,7 +41,7 @@ def scan_image_directory():
             try:
                 image_type_enum = ImageType(image_type)
             except ValueError:
-                image_type_enum = ImageType.GENERAL
+                image_type_enum = ImageType.general
 
         image_files = []
         for ext in ALLOWED_EXTENSIONS:
@@ -69,9 +69,9 @@ def scan_image_directory():
             img = Image(
                 filename=img_path.name,
                 file_path=str(img_path.relative_to(BASE_PATH)) if str(img_path).startswith(str(BASE_PATH)) else str(img_path),
-                source=ImageSource.LOCAL_DIR,
+                source=ImageSource.local_dir,
                 local_path=str(img_path),
-                image_type=image_type_enum or ImageType.GENERAL,
+                image_type=image_type_enum or ImageType.general,
                 created_at=datetime.fromtimestamp(img_path.stat().st_mtime)
             )
             db.session.add(img)
@@ -88,6 +88,34 @@ def scan_image_directory():
         logger.error(f'扫描目录失败: {str(e)}', exc_info=True)
         db.session.rollback()
         return error_response('扫描目录失败')
+
+@bp.route('/images/participate/<int:image_id>', methods=['POST'])
+def mark_image_participation(image_id: int):
+    """标记图片参与状态，使用 variables 中的 participated 字段进行存储"""
+    try:
+        payload = request.get_json() or {}
+        participated = bool(payload.get('participated', True))
+
+        image = Image.query.get_or_404(image_id)
+        vars_obj = image.variables or {}
+        # 仅允许广告规则类型标记参与
+        try:
+            image_type_value = image.image_type.value if hasattr(image.image_type, 'value') else image.image_type
+        except Exception:
+            image_type_value = image.image_type
+        if image_type_value != ImageType.advertising_rule.value:
+            return error_response('仅广告规则图片可参与', 400)
+
+        vars_obj['participated'] = participated
+        image.variables = vars_obj
+        db.session.add(image)
+        db.session.commit()
+
+        return success_response(image.to_dict())
+    except Exception as e:
+        logger.error(f'标记参与状态失败: {str(e)}', exc_info=True)
+        db.session.rollback()
+        return error_response('标记参与状态失败')
 
 @bp.route('/images/default-locations', methods=['GET'])
 def list_default_locations():
@@ -108,13 +136,13 @@ def set_default_location():
 
         if not image_type:
             return error_response('缺少图片类型')
-        if not directory or not os.path.isdir(directory):
+        if not directory:
             return error_response('无效的目录路径')
 
         try:
             image_type_enum = ImageType(image_type)
         except ValueError:
-            image_type_enum = ImageType.GENERAL
+            image_type_enum = ImageType.general
 
         existing = ImageDefaultLocation.query.filter_by(image_type=image_type_enum.value).first()
         if existing:
@@ -124,43 +152,8 @@ def set_default_location():
             db.session.add(existing)
         db.session.commit()
 
-        try:
-            image_files = []
-            for ext in ALLOWED_EXTENSIONS:
-                image_files.extend(list(Path(directory).rglob(f'*.{ext}')))
-
-            added_count = 0
-            for img_path in image_files:
-                existing = Image.query.filter_by(local_path=str(img_path)).first()
-                if existing:
-                    if image_type_enum and existing.image_type != image_type_enum:
-                        existing.image_type = image_type_enum
-                    continue
-                # 纠正上传记录的类型
-                filename = img_path.name
-                possible_matches = Image.query.filter(Image.filename == filename).all()
-                for rec in possible_matches:
-                    if image_type_enum and rec.image_type != image_type_enum:
-                        p = (rec.file_path or '').replace('\\', '/').lower()
-                        if 'upload/images/' in p or p.endswith(filename.lower()):
-                            rec.image_type = image_type_enum
-                img = Image(
-                    filename=img_path.name,
-                    file_path=str(img_path.relative_to(BASE_PATH)) if str(img_path).startswith(str(BASE_PATH)) else str(img_path),
-                    source=ImageSource.LOCAL_DIR,
-                    local_path=str(img_path),
-                    image_type=image_type_enum,
-                    created_at=datetime.fromtimestamp(img_path.stat().st_mtime)
-                )
-                db.session.add(img)
-                added_count += 1
-            db.session.commit()
-        except Exception as se:
-            logger.error(f'扫描默认目录失败: {str(se)}', exc_info=True)
-            db.session.rollback()
-            return error_response('保存成功，但扫描目录失败')
-
-        return success_response({'message': '默认目录已保存并加载', 'added_count': added_count, 'location': existing.to_dict()})
+        # After commit, the 'existing' object is persistent and can be converted to dict
+        return success_response({'message': '默认目录已保存', 'location': existing.to_dict()})
     except Exception as e:
         logger.error(f'设置默认目录失败: {str(e)}', exc_info=True)
         db.session.rollback()
@@ -188,14 +181,31 @@ def upload_image():
             
         file = request.files['file']
         if file.filename == '':
-            return error_response('No selected file')
+            # Generate a filename for pasted images with microseconds for uniqueness
+            import uuid
+            import time
+            # Use full timestamp with milliseconds to avoid collisions
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')  # Includes microseconds
+            ext = file.mimetype.split('/')[-1] if '/' in file.mimetype else 'png'
+            # Use full UUID to ensure absolute uniqueness
+            unique_id = uuid.uuid4().hex
+            file.filename = f'pasted_{timestamp}_{unique_id}.{ext}'
+            logger.info(f"Generated unique filename for pasted image: {file.filename}")
             
         # Get image type from form data, default to 'general'
         image_type = request.form.get('image_type', 'general')
         try:
+            # First try by name
             image_type_enum = ImageType(image_type)
         except ValueError:
-            image_type_enum = ImageType.GENERAL
+            # Then try by value
+            for member in ImageType:
+                if member.value == image_type:
+                    image_type_enum = member
+                    break
+            else:
+                # If no match found, use default
+                image_type_enum = ImageType.general
             
         if file and allowed_file(file.filename):
             filename = secure_filename(file.filename)
@@ -207,21 +217,27 @@ def upload_image():
             # Save the file
             file.save(file_path)
             
-            # Deduplicate by filename for uploads
-            existing = Image.query.filter_by(source=ImageSource.UPLOAD, filename=filename).first()
-            if existing:
+            # For pasted images (unique filenames), always create new records
+            # For uploaded files with duplicate names, update existing record
+            existing = Image.query.filter_by(source=ImageSource.upload, filename=filename).first()
+            if existing and not filename.startswith('pasted_'):
+                # Only update if it's a manually uploaded file (not pasted)
+                logger.info(f"Updating existing image record for {filename}")
                 existing.file_path = f'/uploads/{filename}'
                 existing.image_type = image_type_enum
                 image = existing
             else:
+                # Always create new record for pasted images
+                logger.info(f"Creating new image record for {filename} with type {image_type_enum}")
                 image = Image(
                     filename=filename,
                     file_path=f'/uploads/{filename}',
-                    source=ImageSource.UPLOAD,
+                    source=ImageSource.upload,
                     image_type=image_type_enum
                 )
                 db.session.add(image)
             db.session.commit()
+            logger.info(f"Database committed. Image ID: {image.id}, Type: {image.image_type}")
             
             logger.info(f"Image uploaded successfully: {filename}")
             return success_response({
@@ -235,11 +251,6 @@ def upload_image():
         db.session.rollback()
         logger.error(f"Error uploading image: {str(e)}", exc_info=True)
         return error_response(f'上传失败: {str(e)}')
-        
-    except Exception as e:
-        logger.error(f'上传图片失败: {str(e)}', exc_info=True)
-        db.session.rollback()
-        return error_response('上传图片失败')
 
 @bp.route('/images/generate', methods=['POST'])
 def generate_image():
@@ -328,7 +339,7 @@ def generate_image():
                 workflow_name=workflow.name,
                 file_path=os.path.join(OUTPUT_FOLDER, result[0]),
                 variables=variable_mapping,
-                source=ImageSource.GENERATED
+                source=ImageSource.generated
             )
             db.session.add(image)
             db.session.commit()
@@ -355,46 +366,69 @@ def generate_image():
 @bp.route('/images', methods=['GET'])
 def list_images():
     try:
+        logger.info('list_images function called')
         page = request.args.get('page', 1, type=int)
         per_page = request.args.get('per_page', 20, type=int)
+        
+        logger.info(f'Page: {page}, Per page: {per_page}')
         
         query = Image.query
         
         # Filter by source if provided
         source = request.args.get('source')
         if source:
+            # Normalize source to lowercase to match enum values
+            source = source.lower()
+            logger.info(f'Filtering by source: {source}')
             try:
                 source_enum = ImageSource(source)
+                logger.info(f'Converted source to enum: {source_enum}')
                 query = query.filter(Image.source == source_enum)
-            except Exception:
+            except Exception as e:
+                logger.error(f'Error converting source to enum: {e}')
                 query = query.filter(Image.source == source)
         
         # Filter by image type if provided
         image_type = request.args.get('image_type')
         if image_type:
+            # Normalize image_type to lowercase to match enum values
+            image_type = image_type.lower()
+            logger.info(f'Filtering by image_type: {image_type}')
             try:
                 image_type_enum = ImageType(image_type)
+                logger.info(f'Converted image_type to enum: {image_type_enum}')
                 query = query.filter(Image.image_type == image_type_enum)
-            except Exception:
+            except Exception as e:
+                logger.error(f'Error converting image_type to enum: {e}')
                 query = query.filter(Image.image_type == image_type)
         
         # Paginate results
+        logger.info('Executing query...')
         pagination = query.order_by(Image.created_at.desc()).paginate(
             page=page, per_page=per_page, error_out=False)
         
+        logger.info(f'Query returned {pagination.total} results')
+        
+        logger.info('Converting results to dict...')
         images = [img.to_dict() for img in pagination.items]
         
-        return success_response({
+        logger.info(f'Converted {len(images)} images to dict')
+        
+        response = success_response({
             'items': images,
             'total': pagination.total,
             'page': page,
             'per_page': per_page,
             'pages': pagination.pages
         })
+        logger.info(f'Returning response: {response}')
+        return response
             
     except Exception as e:
-        logger.error(f'获取图片列表失败: {str(e)}', exc_info=True)
-        return error_response('获取图片列表失败')
+        import traceback
+        tb_str = traceback.format_exc()
+        logger.error(f'获取图片列表失败: {str(e)}\n{tb_str}')
+        return error_response(f'获取图片列表失败: {str(e)}', 500)
 
 @bp.route('/images/<int:image_id>', methods=['GET'])
 def get_image(image_id):
@@ -433,6 +467,34 @@ def serve_uploaded_file(filename):
         logger.error(f'Error serving file {filename}: {str(e)}', exc_info=True)
         return error_response(f'Error serving file: {filename}', 500)
 
+@bp.route('/images/output/<path:filename>')
+@cross_origin()
+def serve_output_file(filename):
+    """Serve output/generated files"""
+    try:
+        from conf import OUTPUT_FOLDER
+        
+        # Use the configured output folder
+        output_dir = os.path.abspath(OUTPUT_FOLDER)
+        
+        # Ensure the output directory exists
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # Log the file being served for debugging
+        file_path = os.path.join(output_dir, filename)
+        logger.info(f'Serving output file: {file_path}')
+        
+        if not os.path.exists(file_path):
+            logger.error(f'Output file not found: {file_path}')
+            return error_response(f'Output file not found: {filename}', 404)
+            
+        response = send_from_directory(output_dir, filename)
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        return response
+    except Exception as e:
+        logger.error(f'Error serving output file {filename}: {str(e)}', exc_info=True)
+        return error_response(f'Error serving output file: {filename}', 500)
+
 @bp.route('/images/delete/<int:image_id>', methods=['DELETE', 'OPTIONS'])
 @cross_origin()
 def delete_image(image_id):
@@ -451,7 +513,7 @@ def delete_image(image_id):
         logger.info(f"Found image: {image_id}, path: {image.file_path}, source: {image.source}")
         
         # 只删除上传的文件，不删除本地目录中的文件
-        if image.source == ImageSource.UPLOAD:
+        if image.source == ImageSource.upload.value:
             p = str(image.file_path or '').replace('\\', '/')
             filename = None
             if p.startswith('/uploads/'):
@@ -467,8 +529,10 @@ def delete_image(image_id):
                         os.remove(filepath)
                         logger.info(f"Successfully deleted file: {filepath}")
                     except Exception as e:
-                        logger.error(f"Failed to delete file {filepath}: {str(e)}")
-                        return error_response(f'删除文件失败: {str(e)}', 500)
+                        # Log error but continue to delete database record
+                        logger.warning(f"Failed to delete file {filepath}: {str(e)}, but will continue to delete database record")
+                else:
+                    logger.warning(f"File not found: {filepath}, but will continue to delete database record")
         
         # 删除数据库记录
         db.session.delete(image)
@@ -482,10 +546,10 @@ def delete_image(image_id):
     except Exception as e:
         logger.error(f'删除图片失败: {str(e)}', exc_info=True)
         db.session.rollback()
-        response = error_response(f'删除图片失败: {str(e)}', 500)
-        response.headers.add('Access-Control-Allow-Origin', '*')
-        response.headers.add('Access-Control-Allow-Credentials', 'true')
-        return response
+        resp = make_response(error_response(f'删除图片失败: {str(e)}', 500))
+        resp.headers.add('Access-Control-Allow-Origin', '*')
+        resp.headers.add('Access-Control-Allow-Credentials', 'true')
+        return resp
 
 @bp.route('/images/clear-all', methods=['DELETE', 'OPTIONS'])
 @cross_origin()
@@ -543,16 +607,16 @@ def clear_all_images():
     except Exception as e:
         logger.error(f'清空图片失败: {str(e)}', exc_info=True)
         db.session.rollback()
-        response = error_response(f'清空图片失败: {str(e)}', 500)
-        response.headers.add('Access-Control-Allow-Origin', '*')
-        response.headers.add('Access-Control-Allow-Credentials', 'true')
-        return response
+        resp = make_response(error_response(f'清空图片失败: {str(e)}', 500))
+        resp.headers.add('Access-Control-Allow-Origin', '*')
+        resp.headers.add('Access-Control-Allow-Credentials', 'true')
+        return resp
 
 @bp.route('/images/clear-local', methods=['DELETE'])
 def clear_local_images():
     """清除所有本地目录图片记录（不删除实际文件）"""
     try:
-        count = Image.query.filter_by(source=ImageSource.LOCAL_DIR).delete()
+        count = Image.query.filter_by(source=ImageSource.local_dir).delete()
         db.session.commit()
         return success_response({
             'message': f'已清除 {count} 条本地目录图片记录',
@@ -576,7 +640,7 @@ def reclassify_images():
         try:
             image_type_enum = ImageType(image_type)
         except Exception:
-            image_type_enum = ImageType.GENERAL
+            image_type_enum = ImageType.general
 
         # 1) 纠正本地记录（local_dir）在该目录下的类型
         count_local = 0
@@ -593,7 +657,7 @@ def reclassify_images():
         count_upload = 0
         if filenames:
             upload_records = Image.query.filter(
-                Image.source == ImageSource.UPLOAD,
+                Image.source == ImageSource.upload,
                 Image.filename.in_(list(filenames))
             ).all()
             # unify duplicates by filename, prefer non-general type
@@ -611,8 +675,8 @@ def reclassify_images():
                 for rec in group:
                     if rec.id != target.id:
                         db.session.delete(rec)
-                if target.image_type != image_type_enum:
-                    target.image_type = image_type_enum
+                if target.image_type != image_type_enum.value:
+                    target.image_type = image_type_enum.value
                 count_upload += len(group)
 
         db.session.commit()

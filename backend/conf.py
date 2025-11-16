@@ -13,7 +13,7 @@ COMFYUI_PORT = os.getenv('COMFYUI_PORT', '8188')
 COMFYUI_SERVER_ADDRESS = f"{COMFYUI_HOST}:{COMFYUI_PORT}"
 
 # 图片相关配置
-ALLOWED_EXTENSIONS = set(os.getenv('ALLOWED_EXTENSIONS', 'png,jpg,jpeg').split(','))
+ALLOWED_EXTENSIONS = set(os.getenv('ALLOWED_EXTENSIONS', 'png,jpg,jpeg,gif,webp').split(','))
 UPLOAD_FOLDER = os.path.join(BASE_PATH, os.getenv('UPLOAD_FOLDER', 'upload/images'))
 OUTPUT_FOLDER = os.path.join(BASE_PATH, os.getenv('OUTPUT_FOLDER', 'output/images'))
 
@@ -40,7 +40,7 @@ TENCENT_REGION = os.getenv('TENCENT_REGION', 'ap-beijing')
 XHS_COOKIE = os.getenv('XHS_COOKIE')
 
 # SQLite database configuration
-DATABASE_URI = os.getenv('DATABASE_URI', 'sqlite:///app.db')
+DATABASE_URI = os.getenv('DATABASE_URI', 'sqlite:///instance/app.db')
 
 # pinterest 爬虫配置，用于训练模型
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
