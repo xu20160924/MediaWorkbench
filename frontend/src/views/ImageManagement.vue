@@ -1,5 +1,51 @@
 <template>
   <div class="image-management">
+    <!-- Drop Zone Overlay -->
+    <div v-if="isDropZoneActive" class="drop-zone-overlay">
+      <div class="drop-zone-content">
+        <n-icon size="64"><CloudUploadOutline /></n-icon>
+        <p>释放以上传图片</p>
+        <p class="hint">支持拖放或粘贴 (Ctrl+V)</p>
+      </div>
+    </div>
+    
+    <!-- Image Type Selection Modal for Dropped Files -->
+    <n-modal
+      v-model:show="showDropTypeModal"
+      preset="dialog"
+      title="选择图片类型"
+      positive-text="上传"
+      negative-text="取消"
+      @positive-click="handleDropTypeConfirm"
+      @negative-click="handleDropTypeCancel"
+    >
+      <div style="padding: 20px 0;">
+        <p style="margin-bottom: 16px; color: #666;">请为这 {{ pendingDropFiles.length }} 张图片选择类型：</p>
+        <n-radio-group v-model:value="selectedDropType" name="drop-image-type">
+          <n-space vertical>
+            <n-radio value="general">
+              <n-space align="center">
+                <n-icon :component="ImagesOutline" />
+                <span>普通图片</span>
+              </n-space>
+            </n-radio>
+            <n-radio value="advertising_campaign">
+              <n-space align="center">
+                <n-icon :component="MegaphoneOutline" />
+                <span>活动配图</span>
+              </n-space>
+            </n-radio>
+            <n-radio value="advertising_rule">
+              <n-space align="center">
+                <n-icon :component="DocumentTextOutline" />
+                <span>广告规则</span>
+              </n-space>
+            </n-radio>
+          </n-space>
+        </n-radio-group>
+      </div>
+    </n-modal>
+    
     <!-- Preview Modal -->
     <n-modal 
       v-model:show="showPreview" 
@@ -28,6 +74,35 @@
         </div>
       </template>
       <div class="preview-content" @click.self="showPreview = false">
+        <!-- Navigation Arrows -->
+        <n-button
+          v-if="images.length > 1"
+          class="nav-arrow nav-arrow-left"
+          circle
+          size="large"
+          type="primary"
+          ghost
+          @click.stop="navigatePreview('prev')"
+        >
+          <template #icon>
+            <n-icon size="28"><ChevronBack /></n-icon>
+          </template>
+        </n-button>
+        
+        <n-button
+          v-if="images.length > 1"
+          class="nav-arrow nav-arrow-right"
+          circle
+          size="large"
+          type="primary"
+          ghost
+          @click.stop="navigatePreview('next')"
+        >
+          <template #icon>
+            <n-icon size="28"><ChevronForward /></n-icon>
+          </template>
+        </n-button>
+        
         <div class="image-container">
           <template v-if="previewImageUrl">
             <div class="image-wrapper">
@@ -54,72 +129,96 @@
         
         <!-- Image Controls -->
         <div class="preview-controls">
-          <n-button-group>
-            <n-tooltip>
-              <template #trigger>
-                <n-button @click="zoomOut" :disabled="zoomLevel <= 0.5">
-                  <template #icon>
-                    <n-icon><RemoveOutline /></n-icon>
-                  </template>
-                </n-button>
-              </template>
-              <span>缩小</span>
-            </n-tooltip>
-            <n-tooltip>
-              <template #trigger>
-                <n-button @click="resetZoom">
-                  {{ Math.round(zoomLevel * 100) }}%
-                </n-button>
-              </template>
-              <span>重置缩放</span>
-            </n-tooltip>
-            <n-tooltip>
-              <template #trigger>
-                <n-button @click="zoomIn" :disabled="zoomLevel >= 3">
-                  <template #icon>
-                    <n-icon><AddOutline /></n-icon>
-                  </template>
-                </n-button>
-              </template>
-              <span>放大</span>
-            </n-tooltip>
-          </n-button-group>
-          
-          <n-button-group>
-            <n-tooltip>
-              <template #trigger>
-                <n-button @click="rotateLeft">
-                  <template #icon>
-                    <n-icon><RefreshOutline /></n-icon>
-                  </template>
-                </n-button>
-              </template>
-              <span>左旋转</span>
-            </n-tooltip>
-            <n-tooltip>
-              <template #trigger>
-                <n-button @click="rotateRight">
-                  <template #icon>
-                    <n-icon><RefreshOutline style="transform: scaleX(-1);" /></n-icon>
-                  </template>
-                </n-button>
-              </template>
-              <span>右旋转</span>
-            </n-tooltip>
-          </n-button-group>
-          
-          <n-tooltip>
-            <template #trigger>
-              <n-button type="primary" @click="downloadImage">
+          <div class="control-section">
+            <span class="control-label">缩放</span>
+            <n-button-group>
+              <n-button @click="zoomOut" :disabled="zoomLevel <= 0.5" size="small">
                 <template #icon>
-                  <n-icon><DownloadOutline /></n-icon>
+                  <n-icon><RemoveOutline /></n-icon>
                 </template>
               </n-button>
+              <n-button @click="resetZoom" size="small" strong>
+                {{ Math.round(zoomLevel * 100) }}%
+              </n-button>
+              <n-button @click="zoomIn" :disabled="zoomLevel >= 3" size="small">
+                <template #icon>
+                  <n-icon><AddOutline /></n-icon>
+                </template>
+              </n-button>
+            </n-button-group>
+          </div>
+          
+          <div class="control-divider"></div>
+          
+          <div class="control-section">
+            <span class="control-label">旋转</span>
+            <n-button-group>
+              <n-button @click="rotateLeft" size="small">
+                <template #icon>
+                  <n-icon><RefreshOutline /></n-icon>
+                </template>
+              </n-button>
+              <n-button @click="rotateRight" size="small">
+                <template #icon>
+                  <n-icon><RefreshOutline style="transform: scaleX(-1);" /></n-icon>
+                </template>
+              </n-button>
+            </n-button-group>
+          </div>
+          
+          <div class="control-divider"></div>
+          
+          <n-button type="primary" @click="downloadImage" size="small">
+            <template #icon>
+              <n-icon><DownloadOutline /></n-icon>
             </template>
-            <span>下载图片</span>
-          </n-tooltip>
+            下载
+          </n-button>
         </div>
   </div>
+</n-modal>
+
+<!-- Participation Image Preview Modal -->
+<n-modal v-model:show="showParticipationPreview" preset="card" :title="participationPreviewTitle" :mask-closable="true" style="width: 800px">
+  <div class="participation-preview-content">
+    <div class="preview-image-wrapper">
+      <img :src="getImageUrl(participationPreviewImage)" :alt="participationPreviewImage?.name" class="large-preview-image" />
+    </div>
+    
+    <n-divider />
+    
+    <n-form label-placement="top">
+      <n-form-item label="图片标签">
+        <n-dynamic-tags v-model:value="participationPreviewImage.tags" @create="handleTagCreate">
+          <template #input="{ activate, deactivate }">
+            <n-input
+              ref="tagInputRef"
+              :placeholder="'输入标签后按回车，或粘贴 (Ctrl+V)'"
+              @keyup.enter="activate"
+              @blur="deactivate"
+            />
+          </template>
+        </n-dynamic-tags>
+        <template #feedback>
+          <span style="font-size: 12px; color: #999;">提示：可直接粘贴标签文本</span>
+        </template>
+      </n-form-item>
+      
+      <n-form-item label="选择状态">
+        <n-switch v-model:value="participationPreviewSelected" @update:value="handlePreviewSelectionToggle">
+          <template #checked>已选择</template>
+          <template #unchecked>未选择</template>
+        </n-switch>
+      </n-form-item>
+    </n-form>
+  </div>
+  
+  <template #footer>
+    <div style="display: flex; justify-content: flex-end; gap: 12px;">
+      <n-button @click="saveParticipationPreviewTags">保存标签</n-button>
+      <n-button type="primary" @click="showParticipationPreview = false">关闭</n-button>
+    </div>
+  </template>
 </n-modal>
 
 <!-- Participation Prompt Modal -->
@@ -177,6 +276,7 @@
 
     <div class="content-wrapper">
       <div class="page-header">
+        <h2 class="page-title">图片管理</h2>
         <div class="header-content">
           <div class="header-actions">
             <n-dropdown
@@ -203,6 +303,16 @@
                 placeholder="筛选图片类型"
               />
             </div>
+            <div class="filter-group">
+              <span class="filter-label">参与状态</span>
+              <n-select
+                v-model:value="participationFilter"
+                :options="participationOptions"
+                class="type-select"
+                clearable
+                placeholder="筛选参与状态"
+              />
+            </div>
             <n-button ghost class="default-dir" @click="showDefaultDirModal = true">
               <template #icon>
                 <n-icon><FolderOpenOutline /></n-icon>
@@ -213,8 +323,6 @@
               全部删除
             </n-button>
           </div>
-          
-          <h2 class="page-title">图片管理</h2>
           
           <div class="view-options">
             <n-radio-group v-model:value="viewMode" name="view-mode">
@@ -245,8 +353,14 @@
               <span>预览</span>
             </div>
             <div v-if="selectMode && isSelectable(image)" class="select-mask" :class="{ selected: isSelected(image) }">
-              <span>{{ isSelected(image) ? '已选择' : '选择' }}</span>
+              <n-icon size="20">{{ isSelected(image) ? '✓' : '' }}</n-icon>
             </div>
+            <!-- Preview button in select mode -->
+            <n-button v-if="selectMode && isSelectable(image)" class="preview-btn" size="tiny" circle type="info" @click.stop="openParticipationPreview(image)">
+              <template #icon>
+                <n-icon><EyeOutline /></n-icon>
+              </template>
+            </n-button>
           </div>
           <div class="image-info">
             <div class="image-name">{{ image.name }}</div>
@@ -377,6 +491,7 @@ interface ImageItem {
   source?: string;
   workflow_name?: string;
   participated?: boolean;
+  tags?: string[];
   variables?: {
     participated?: boolean;
     [key: string]: any;
@@ -402,13 +517,18 @@ import {
   NEmpty,
   NList,
   NListItem,
+  NCard,
   NThing,
   NRadioGroup,
   NRadioButton,
   NTag,
-  NSelect
-  ,
-  NInput
+  NSelect,
+  NInput,
+  NForm,
+  NFormItem,
+  NSwitch,
+  NDivider,
+  NDynamicTags
 } from 'naive-ui';
 import { 
   CloudUploadOutline,
@@ -426,7 +546,9 @@ import {
   SearchOutline,
   RefreshOutline,
   RemoveOutline,
-  DownloadOutline
+  DownloadOutline,
+  ChevronBack,
+  ChevronForward
 } from '@vicons/ionicons5';
 import api from '@/api';
 
@@ -468,15 +590,52 @@ export default defineComponent({
     const showPreview = ref(false);
     const showDefaultDirModal = ref(false);
     const showUploadMenu = ref(false);
+    const showDropTypeModal = ref(false);
     const previewImageUrl = ref('');
+    const currentPreviewIndex = ref(-1);
     const images = ref<ImageItem[]>([]);
+    const pendingDropFiles = ref<File[]>([]);
+    const selectedDropType = ref('general');
     const loading = ref(false);
     const imageTypeFilter = ref('all');
+    const participationFilter = ref('all');
     const selectMode = ref(false);
     const selectedRegular = ref<number[]>([]);
     const selectedEvent = ref<number[]>([]);
     const showPromptModal = ref(false);
     const participationPrompt = ref('');
+    
+    // Participation preview
+    const showParticipationPreview = ref(false);
+    const participationPreviewImage = ref<any>({});
+    const tagInputRef = ref<any>(null);
+    
+    const participationPreviewTitle = computed(() => {
+      return participationPreviewImage.value?.name || '图片预览';
+    });
+    
+    const participationPreviewSelected = computed({
+      get: () => {
+        const id = Number(participationPreviewImage.value?.id || -1);
+        const type = participationPreviewImage.value?.image_type || '';
+        if (type === 'general') return selectedRegular.value.includes(id);
+        if (type === 'advertising_campaign') return selectedEvent.value.includes(id);
+        return false;
+      },
+      set: (val: boolean) => {
+        const id = Number(participationPreviewImage.value?.id || -1);
+        const type = participationPreviewImage.value?.image_type || '';
+        if (type === 'general') {
+          const idx = selectedRegular.value.indexOf(id);
+          if (val && idx < 0) selectedRegular.value.push(id);
+          else if (!val && idx >= 0) selectedRegular.value.splice(idx, 1);
+        } else if (type === 'advertising_campaign') {
+          const idx = selectedEvent.value.indexOf(id);
+          if (val && idx < 0) selectedEvent.value.push(id);
+          else if (!val && idx >= 0) selectedEvent.value.splice(idx, 1);
+        }
+      }
+    });
     
     // Image type options for the dropdown
     const imageTypeOptions = [
@@ -486,6 +645,13 @@ export default defineComponent({
       { label: '广告规则', value: 'advertising_rule' },
     ];
     
+    // Participation filter options
+    const participationOptions = [
+      { label: '全部', value: 'all' },
+      { label: '已参与', value: 'participated' },
+      { label: '未参与', value: 'not_participated' },
+    ];
+    
     // Image preview state
     const scale = ref(1);
     const rotate = ref(0);
@@ -493,8 +659,8 @@ export default defineComponent({
     const isDragging = ref(false);
     const dragStart = ref({ x: 0, y: 0 });
     
-    // Calculate zoom level for display
-    const zoomLevel = computed(() => Math.round(scale.value * 100) + '%');
+    // Calculate zoom level for display (as number, not string)
+    const zoomLevel = computed(() => scale.value);
     
     // Image URL helper
     const getImageUrl = (image: any): string => {
@@ -619,6 +785,10 @@ export default defineComponent({
         return;
       }
       
+      // Find the index of the image in the current images array
+      const index = images.value.findIndex(img => img.id === image.id);
+      currentPreviewIndex.value = index;
+      
       // Reset preview state
       scale.value = 1;
       rotate.value = 0;
@@ -651,6 +821,39 @@ export default defineComponent({
         showPreview.value = false;
       };
       img.src = previewImageUrl.value;
+    };
+    
+    // Navigate to previous/next image
+    const navigatePreview = (direction: 'prev' | 'next') => {
+      if (images.value.length === 0 || currentPreviewIndex.value === -1) return;
+      
+      let newIndex = currentPreviewIndex.value;
+      if (direction === 'prev') {
+        newIndex = currentPreviewIndex.value > 0 ? currentPreviewIndex.value - 1 : images.value.length - 1;
+      } else {
+        newIndex = currentPreviewIndex.value < images.value.length - 1 ? currentPreviewIndex.value + 1 : 0;
+      }
+      
+      const newImage = images.value[newIndex];
+      if (newImage) {
+        showImagePreview(newImage);
+      }
+    };
+    
+    // Keyboard navigation
+    const handleKeydown = (e: KeyboardEvent) => {
+      if (!showPreview.value) return;
+      
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        navigatePreview('prev');
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        navigatePreview('next');
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        showPreview.value = false;
+      }
     };
     
     
@@ -847,8 +1050,6 @@ export default defineComponent({
         'transform': `scale(${scale.value}) rotate(${rotate.value}deg) translate(${position.value.x}px, ${position.value.y}px)`,
         'cursor': isDragging.value ? 'grabbing' : 'grab',
         'transition': isDragging.value ? 'none' : 'transform 0.2s ease',
-        'max-width': '100%',
-        'max-height': '100%',
         'user-select': 'none',
         'user-drag': 'none',
         '-webkit-user-drag': 'none',
@@ -1082,7 +1283,9 @@ export default defineComponent({
     const fetchImages = async () => {
       try {
         loading.value = true;
-        const params: any = {};
+        const params: any = {
+          per_page: 1000  // Request a large number to get all images
+        };
         
         if (imageTypeFilter.value !== 'all') {
           params.image_type = imageTypeFilter.value;
@@ -1108,10 +1311,21 @@ export default defineComponent({
             return t === wanted;
           });
         }
+        if (participationFilter.value !== 'all') {
+          normalized = normalized.filter((it: any) => {
+            const participated = it?.participated || false;
+            if (participationFilter.value === 'participated') {
+              return participated === true;
+            } else if (participationFilter.value === 'not_participated') {
+              return participated === false;
+            }
+            return true;
+          });
+        }
         images.value = normalized;
       } catch (error: any) {
         try {
-          const fallback = await api.get('/images');
+          const fallback = await api.get('/images', { params: { per_page: 1000 } });
           const payload = fallback?.data || {};
           const items = Array.isArray(payload?.data)
             ? payload.data
@@ -1127,6 +1341,17 @@ export default defineComponent({
           if (imageTypeFilter.value !== 'all') {
             const wanted = imageTypeFilter.value;
             normalized = normalized.filter((it: any) => (it?.image_type || 'general') === wanted);
+          }
+          if (participationFilter.value !== 'all') {
+            normalized = normalized.filter((it: any) => {
+              const participated = it?.participated || false;
+              if (participationFilter.value === 'participated') {
+                return participated === true;
+              } else if (participationFilter.value === 'not_participated') {
+                return participated === false;
+              }
+              return true;
+            });
           }
           images.value = normalized;
         } catch (e2: any) {
@@ -1302,10 +1527,82 @@ export default defineComponent({
     // Reset preview state
     const resetPreview = () => {
       previewImageUrl.value = '';
+      currentPreviewIndex.value = -1;
       scale.value = 1;
       rotate.value = 0;
       position.value = { x: 0, y: 0 };
       isDragging.value = false;
+      dragStart.value = { x: 0, y: 0 };
+    };
+
+    // Handle paste from clipboard
+    const handlePaste = (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.indexOf('image') !== -1) {
+          const file = items[i].getAsFile();
+          if (file) {
+            // Default to general type for pasted images
+            handleFileUpload(file, 'general');
+            message.success('已粘贴图片，正在上传...');
+          }
+          break;
+        }
+      }
+    };
+
+    // Handle drag and drop
+    const isDropZoneActive = ref(false);
+    
+    const handleDragOver = (e: DragEvent) => {
+      e.preventDefault();
+      isDropZoneActive.value = true;
+    };
+    
+    const handleDragLeave = (e: DragEvent) => {
+      e.preventDefault();
+      isDropZoneActive.value = false;
+    };
+    
+    const handleDrop = (e: DragEvent) => {
+      e.preventDefault();
+      isDropZoneActive.value = false;
+      
+      const files = e.dataTransfer?.files;
+      if (!files || files.length === 0) return;
+      
+      // Filter image files
+      const imageFiles = Array.from(files).filter(file => file.type.startsWith('image/'));
+      
+      if (imageFiles.length === 0) {
+        message.warning('未检测到图片文件');
+        return;
+      }
+      
+      // Store pending files and show type selection modal
+      pendingDropFiles.value = imageFiles;
+      selectedDropType.value = 'general'; // Default selection
+      showDropTypeModal.value = true;
+    };
+    
+    const handleDropTypeConfirm = () => {
+      // Upload all dropped image files with selected type
+      pendingDropFiles.value.forEach(file => {
+        handleFileUpload(file, selectedDropType.value);
+      });
+      
+      message.success(`正在上传 ${pendingDropFiles.value.length} 个图片（${getImageTypeLabel(selectedDropType.value)}）...`);
+      
+      // Clear pending files
+      pendingDropFiles.value = [];
+      showDropTypeModal.value = false;
+    };
+    
+    const handleDropTypeCancel = () => {
+      pendingDropFiles.value = [];
+      showDropTypeModal.value = false;
     };
 
     // Initial data fetch
@@ -1313,8 +1610,35 @@ export default defineComponent({
       fetchImages();
       loadBasePaths();
       loadDefaultLocations().then(scanConfiguredDirectories);
+      
+      // Add paste event listener
+      document.addEventListener('paste', handlePaste);
+      
+      // Add drag-drop listeners to the main content area
+      const contentArea = document.querySelector('.content-wrapper');
+      if (contentArea) {
+        contentArea.addEventListener('dragover', handleDragOver as any);
+        contentArea.addEventListener('dragleave', handleDragLeave as any);
+        contentArea.addEventListener('drop', handleDrop as any);
+      }
+      window.addEventListener('keydown', handleKeydown);
     });
+    
+    // Cleanup event listeners
+    const onUnmounted = () => {
+      document.removeEventListener('paste', handlePaste);
+      const contentArea = document.querySelector('.content-wrapper');
+      if (contentArea) {
+        contentArea.removeEventListener('dragover', handleDragOver as any);
+        contentArea.removeEventListener('dragleave', handleDragLeave as any);
+        contentArea.removeEventListener('drop', handleDrop as any);
+      }
+      window.removeEventListener('keydown', handleKeydown);
+    };
     watch(imageTypeFilter, () => {
+      fetchImages();
+    });
+    watch(participationFilter, () => {
       fetchImages();
     });
 
@@ -1406,6 +1730,39 @@ export default defineComponent({
         if (idx >= 0) selectedEvent.value.splice(idx,1); else selectedEvent.value.push(id);
       }
     };
+    
+    const openParticipationPreview = (img: any) => {
+      participationPreviewImage.value = { ...img, tags: img.tags || [] };
+      showParticipationPreview.value = true;
+    };
+    
+    const handleTagCreate = (label: string) => {
+      return label.trim();
+    };
+    
+    const handlePreviewSelectionToggle = (val: boolean) => {
+      // The computed property handles the actual selection logic
+    };
+    
+    const saveParticipationPreviewTags = async () => {
+      try {
+        const imageId = participationPreviewImage.value.id;
+        const tags = participationPreviewImage.value.tags || [];
+        
+        // Update the image in the main images array
+        const imageIndex = images.value.findIndex(img => img.id === imageId);
+        if (imageIndex >= 0) {
+          images.value[imageIndex].tags = tags;
+        }
+        
+        // Optional: Send to backend to persist tags
+        // await api.patch(`/images/${imageId}`, { tags });
+        
+        message.success('标签已保存');
+      } catch (error) {
+        message.error('保存标签失败');
+      }
+    };
     const toggleSelectMode = () => {
       selectMode.value = !selectMode.value;
     };
@@ -1440,16 +1797,28 @@ export default defineComponent({
       showPreview,
       showDefaultDirModal,
       showUploadMenu,
+      showDropTypeModal,
       previewImageUrl,
+      currentPreviewIndex,
       images,
+      pendingDropFiles,
+      selectedDropType,
+      navigatePreview,
       loading,
       imageTypeFilter,
       imageTypeOptions,
+      participationFilter,
+      participationOptions,
       selectMode,
       showPromptModal,
       participationPrompt,
       selectedRegular,
       selectedEvent,
+      showParticipationPreview,
+      participationPreviewImage,
+      participationPreviewTitle,
+      participationPreviewSelected,
+      tagInputRef,
       uploadOptions,
       zoomLevel,
       imageStyle,
@@ -1460,6 +1829,7 @@ export default defineComponent({
       loadBasePaths,
       scanConfiguredDirectories,
       selectCurrentFolder,
+      isDropZoneActive,
       
       // Methods
       toggleParticipated,
@@ -1489,8 +1859,18 @@ export default defineComponent({
       confirmDelete,
       confirmDeleteAll,
       handleUploadSelect,
+      handleTagCreate,
+      handlePreviewSelectionToggle,
+      saveParticipationPreviewTags,
+      openParticipationPreview,
+      isSelectable,
+      isSelected,
+      onSelect,
       handleDirectoryUpload: handleDirectoryUploadWrapper,
+      handleDropTypeConfirm,
+      handleDropTypeCancel,
       downloadImage,
+      resetPreview,
       zoomIn,
       zoomOut,
       resetZoom,
@@ -1503,6 +1883,8 @@ export default defineComponent({
       // Icons
       CloudUploadOutline,
       ChevronDown,
+      ChevronBack,
+      ChevronForward,
       DownloadOutline,
       Close: CloseOutline,
       SearchOutline,
@@ -1512,6 +1894,9 @@ export default defineComponent({
       GridOutline,
       ListOutline,
       TrashOutline,
+      ImagesOutline,
+      MegaphoneOutline,
+      DocumentTextOutline,
       
       // Components
       NList,
@@ -1527,13 +1912,85 @@ export default defineComponent({
       NEmpty,
       NSelect,
       NDropdown,
-      NModal
+      NModal,
+      NForm,
+      NFormItem,
+      NSwitch,
+      NDivider,
+      NDynamicTags
     };
   },
 });
 </script>
 
 <style scoped>
+/* Drop Zone Overlay */
+.drop-zone-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(24, 160, 88, 0.15);
+  backdrop-filter: blur(4px);
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.drop-zone-content {
+  background: white;
+  border: 3px dashed var(--n-color-target);
+  border-radius: 16px;
+  padding: 48px 64px;
+  text-align: center;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+}
+
+.drop-zone-content .n-icon {
+  color: var(--n-color-target);
+  margin-bottom: 16px;
+}
+
+.drop-zone-content p {
+  margin: 8px 0;
+  font-size: 18px;
+  font-weight: 500;
+  color: #333;
+}
+
+.drop-zone-content .hint {
+  font-size: 14px;
+  font-weight: 400;
+  color: #666;
+  margin-top: 12px;
+}
+
+/* Participation Preview Modal */
+.participation-preview-content {
+  padding: 16px 0;
+}
+
+.preview-image-wrapper {
+  width: 100%;
+  max-height: 400px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f5f5f5;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.large-preview-image {
+  max-width: 100%;
+  max-height: 400px;
+  object-fit: contain;
+  border-radius: 4px;
+}
+
 /* Preview Modal Styles */
 .preview-modal .n-card {
   display: flex;
@@ -1607,8 +2064,10 @@ export default defineComponent({
 }
 
 .preview-image {
-  max-width: 100%;
-  max-height: 100%;
+  width: auto;
+  height: auto;
+  max-width: 90vw;
+  max-height: calc(90vh - 120px);
   object-fit: contain;
   padding: 0;
   margin: 0;
@@ -1621,21 +2080,31 @@ export default defineComponent({
 
 .preview-controls {
   position: fixed;
-  bottom: 24px;
+  bottom: 32px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
   gap: 12px;
-  padding: 8px 16px;
-  background: rgba(0, 0, 0, 0.7);
-  border-radius: 24px;
-  backdrop-filter: blur(8px);
+  padding: 12px 20px;
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 28px;
+  backdrop-filter: blur(12px);
   z-index: 100;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.1);
+  opacity: 0.92;
+  transition: all 0.3s ease;
+}
+
+.preview-controls:hover {
+  opacity: 1;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.2);
+  transform: translateX(-50%) translateY(-4px);
 }
 
 .preview-controls .n-button {
   transition: all 0.2s ease;
+  min-width: 40px;
+  height: 40px;
 }
 
 .preview-controls .n-button:not(:disabled):hover {
@@ -1646,19 +2115,72 @@ export default defineComponent({
   transform: scale(0.95);
 }
 
-/* Hide controls when not interacting */
-.preview-content:not(:hover) .preview-controls {
-  opacity: 0;
-  pointer-events: none;
-  transform: translateX(-50%) translateY(20px);
-  transition: opacity 0.3s ease, transform 0.3s ease;
+/* Always show controls with slight fade-in animation */
+.preview-content .preview-controls {
+  animation: slideUpFadeIn 0.4s ease-out;
 }
 
-.preview-content:hover .preview-controls {
+@keyframes slideUpFadeIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(20px);
+  }
+  to {
+    opacity: 0.92;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+/* Navigation Arrows */
+.nav-arrow {
+  position: fixed;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1002;
+  opacity: 0.7;
+  transition: all 0.3s ease;
+  background: rgba(0, 0, 0, 0.5) !important;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+}
+
+.nav-arrow:hover {
   opacity: 1;
-  pointer-events: auto;
-  transform: translateX(-50%) translateY(0);
-  transition: opacity 0.3s ease 0.3s, transform 0.3s ease 0.3s;
+  transform: translateY(-50%) scale(1.1);
+  background: rgba(0, 0, 0, 0.7) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.nav-arrow:active {
+  transform: translateY(-50%) scale(0.95);
+}
+
+.nav-arrow-left {
+  left: 20px;
+}
+
+.nav-arrow-right {
+  right: 20px;
+}
+
+.control-section {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.control-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #666;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.control-divider {
+  width: 1px;
+  height: 24px;
+  background: linear-gradient(to bottom, transparent, rgba(0, 0, 0, 0.15), transparent);
 }
 
 .empty-preview {
@@ -1702,6 +2224,34 @@ export default defineComponent({
   .close-button {
     width: 36px;
     height: 36px;
+  }
+  
+  .nav-arrow {
+    opacity: 0.8;
+  }
+  
+  .nav-arrow-left {
+    left: 10px;
+  }
+  
+  .nav-arrow-right {
+    right: 10px;
+  }
+}
+
+@media (max-width: 480px) {
+  .nav-arrow {
+    width: 44px !important;
+    height: 44px !important;
+    opacity: 0.85;
+  }
+  
+  .nav-arrow-left {
+    left: 8px;
+  }
+  
+  .nav-arrow-right {
+    right: 8px;
   }
 }
 
@@ -1752,11 +2302,11 @@ body, html {
   padding: 0 24px;
 }
 
-/* Grid View - Full width grid */
+/* Grid View - Full width grid - Large images for maximum detail */
 .image-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: var(--grid-gap);
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 20px;
   padding: 16px 0 0 0;
   margin: 0;
   width: 100%;
@@ -2077,13 +2627,36 @@ body, html {
   position: absolute;
   top: 8px;
   left: 8px;
-  background: rgba(255,76,104,0.85);
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.5);
   color: #fff;
-  padding: 2px 6px;
-  border-radius: 6px;
-  font-size: 12px;
+  border-radius: 50%;
+  font-size: 16px;
+  border: 2px solid transparent;
+  transition: all 0.2s;
 }
-.select-mask.selected { background: rgba(76,175,80,0.85); }
+.select-mask.selected { 
+  background: rgba(76,175,80,0.95); 
+  border-color: white;
+  font-weight: bold;
+}
+
+.preview-btn {
+  position: absolute !important;
+  top: 8px;
+  right: 8px;
+  z-index: 10;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.image-preview-container:hover .preview-btn {
+  opacity: 1;
+}
 .list-image-container { position: relative; }
 .select-badge {
   position: absolute;
@@ -2099,10 +2672,10 @@ body, html {
 .prompt-content { white-space: pre-wrap; line-height: 1.6; }
 
 .page-title {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  margin: 0;
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--text-color);
+  margin: 0 0 16px 0;
 }
 
 .view-options {
@@ -2313,22 +2886,107 @@ body, html {
   padding-right: 8px;
 }
 
-/* Responsive adjustments */
-@media (max-width: 768px) {
+/* Responsive adjustments for tablets and mobile */
+@media (max-width: 1024px) {
   .page-header {
     flex-direction: column;
     align-items: flex-start;
     gap: 12px;
   }
   
+  .view-options {
+    margin-left: 0;
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 768px) {
+  .page-title {
+    font-size: 20px;
+  }
+  
   .image-grid {
-    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-    gap: 16px;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 12px;
+    padding: 8px;
+  }
+  
+  .image-preview {
+    height: 200px;
+  }
+  
+  .image-info {
+    padding: 6px 8px 8px;
+  }
+  
+  .image-name {
+    font-size: 12px;
+  }
+  
+  .image-meta {
+    font-size: 11px;
   }
   
   .list-image-preview {
     width: 50px;
     height: 50px;
+  }
+  
+  /* Make controls touch-friendly */
+  .n-button {
+    min-height: 44px !important;
+  }
+  
+  /* Modal adjustments */
+  .default-dir-form .form-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .default-dir-form .form-label {
+    width: 100%;
+    margin-bottom: 4px;
+  }
+  
+  /* Preview modal adjustments */
+  .simple-preview-controls {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+}
+
+/* Extra small devices (phones in portrait) */
+@media (max-width: 480px) {
+  .content-wrapper {
+    padding: 8px;
+  }
+  
+  .page-title {
+    font-size: 18px;
+  }
+  
+  .image-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+    padding: 4px;
+  }
+  
+  .image-preview {
+    height: 150px;
+  }
+  
+  .image-actions {
+    flex-wrap: wrap;
+  }
+  
+  .filters-section {
+    flex-direction: column;
+    gap: 8px;
+  }
+  
+  .filter-group {
+    width: 100%;
   }
 }
 </style>

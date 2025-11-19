@@ -32,6 +32,7 @@ def scan_image_directory():
         data = request.get_json()
         directory = data.get('directory')
         image_type = data.get('image_type')
+        force_rescan = data.get('force_rescan', False)
 
         if not directory:
             return error_response('无效的目录路径')
@@ -46,25 +47,50 @@ def scan_image_directory():
         image_files = []
         for ext in ALLOWED_EXTENSIONS:
             image_files.extend(list(Path(directory).rglob(f'*.{ext}')))
+        
+        logger.info(f'Scanning directory: {directory}, found {len(image_files)} image files, type: {image_type_enum}, force_rescan: {force_rescan}')
 
         added_count = 0
+        updated_count = 0
+        skipped_count = 0
+        
         for img_path in image_files:
             # 先尝试通过本地路径匹配
             existing = Image.query.filter_by(local_path=str(img_path)).first()
             if existing:
                 if image_type_enum and existing.image_type != image_type_enum:
                     existing.image_type = image_type_enum
+                    updated_count += 1
+                    logger.debug(f'Updated type for existing image: {img_path.name}')
+                else:
+                    skipped_count += 1
                 continue
 
-            # 再尝试通过文件名匹配上传记录并纠正类型
+            # 再尝试通过文件名匹配，检查是否已存在同名图片
             filename = img_path.name
+            found_duplicate = False
             possible_matches = Image.query.filter(Image.filename == filename).all()
             for rec in possible_matches:
-                if image_type_enum and rec.image_type != image_type_enum:
-                    # 仅在上传目录或同一默认目录下进行纠正
+                # 如果找到同名的local_dir记录，说明已存在，跳过
+                if rec.source == ImageSource.local_dir:
+                    found_duplicate = True
+                    if image_type_enum and rec.image_type != image_type_enum:
+                        rec.image_type = image_type_enum
+                        updated_count += 1
+                        logger.debug(f'Updated type for duplicate image: {filename}')
+                    else:
+                        skipped_count += 1
+                    break
+                # 如果是上传记录，更新其类型但不阻止创建local_dir记录
+                elif image_type_enum and rec.image_type != image_type_enum:
                     p = (rec.file_path or '').replace('\\', '/').lower()
                     if 'upload/images/' in p or p.endswith(filename.lower()):
                         rec.image_type = image_type_enum
+                        logger.debug(f'Updated type for uploaded image: {filename}')
+            
+            # 如果找到重复的local_dir记录，跳过
+            if found_duplicate:
+                continue
 
             img = Image(
                 filename=img_path.name,
@@ -76,12 +102,18 @@ def scan_image_directory():
             )
             db.session.add(img)
             added_count += 1
+            logger.debug(f'Added new image: {img_path.name}')
 
         db.session.commit()
+        
+        logger.info(f'Scan complete: added={added_count}, updated={updated_count}, skipped={skipped_count}, total_files={len(image_files)}')
 
         return success_response({
-            'message': f'成功添加 {added_count} 张图片',
-            'added_count': added_count
+            'message': f'扫描完成: 新增 {added_count} 张，更新 {updated_count} 张，跳过 {skipped_count} 张',
+            'added_count': added_count,
+            'updated_count': updated_count,
+            'skipped_count': skipped_count,
+            'total_files': len(image_files)
         })
 
     except Exception as e:
@@ -214,8 +246,36 @@ def upload_image():
             # Create upload directory if it doesn't exist
             os.makedirs(os.path.dirname(file_path), exist_ok=True)
             
-            # Save the file
+            # Save the file to upload folder
             file.save(file_path)
+            logger.info(f"File saved to upload folder: {file_path}")
+            
+            # Check if there's a default location for this image type
+            default_location = ImageDefaultLocation.query.filter_by(
+                image_type=image_type_enum.value
+            ).first()
+            
+            local_path = None
+            if default_location and default_location.directory:
+                # Copy file to default directory
+                try:
+                    default_dir = default_location.directory
+                    os.makedirs(default_dir, exist_ok=True)
+                    
+                    dest_path = os.path.join(default_dir, filename)
+                    # If file already exists, add timestamp to make it unique
+                    if os.path.exists(dest_path):
+                        name, ext = os.path.splitext(filename)
+                        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                        filename_with_time = f"{name}_{timestamp}{ext}"
+                        dest_path = os.path.join(default_dir, filename_with_time)
+                    
+                    shutil.copy2(file_path, dest_path)
+                    local_path = dest_path
+                    logger.info(f"File copied to default location: {dest_path}")
+                except Exception as e:
+                    logger.error(f"Failed to copy file to default location: {str(e)}")
+                    # Continue even if copy fails
             
             # For pasted images (unique filenames), always create new records
             # For uploaded files with duplicate names, update existing record
@@ -225,6 +285,7 @@ def upload_image():
                 logger.info(f"Updating existing image record for {filename}")
                 existing.file_path = f'/uploads/{filename}'
                 existing.image_type = image_type_enum
+                existing.local_path = local_path
                 image = existing
             else:
                 # Always create new record for pasted images
@@ -233,15 +294,16 @@ def upload_image():
                     filename=filename,
                     file_path=f'/uploads/{filename}',
                     source=ImageSource.upload,
-                    image_type=image_type_enum
+                    image_type=image_type_enum,
+                    local_path=local_path
                 )
                 db.session.add(image)
             db.session.commit()
-            logger.info(f"Database committed. Image ID: {image.id}, Type: {image.image_type}")
+            logger.info(f"Database committed. Image ID: {image.id}, Type: {image.image_type}, Local path: {local_path}")
             
             logger.info(f"Image uploaded successfully: {filename}")
             return success_response({
-                'message': '图片上传成功',
+                'message': '图片上传成功' + (' (已保存到默认目录)' if local_path else ''),
                 'image': image.to_dict()
             })
         else:

@@ -178,6 +178,9 @@ cython_debug/
 /frontend/.vscode
 /frontend/README.md
 
+# Logs
+/logs/
+
 .DS_Store
 package-lock.json
 app.db

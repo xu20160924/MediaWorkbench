@@ -211,6 +211,7 @@ h1 {
   
   .content {
     border-radius: 8px;
+    padding: 0.5rem;
   }
 
   .status-container {
@@ -218,17 +219,49 @@ h1 {
     transform: none;
     justify-content: center;
     margin-top: 0.5rem;
+    flex-wrap: wrap;
+    gap: 0.5rem;
   }
 
   .service-status,
   .comfyui-status {
-    font-size: 0.75rem;
-    padding: 0.3rem 0.6rem;
+    font-size: 0.7rem;
+    padding: 0.25rem 0.5rem;
+    white-space: nowrap;
   }
 
   .header {
     text-align: center;
-    padding: 1rem;
+    padding: 0.8rem 0.5rem;
+  }
+  
+  h1 {
+    font-size: 1.4rem;
+    margin-bottom: 0.3rem;
+  }
+  
+  .theme-switch {
+    margin-left: 0.5rem;
+  }
+}
+
+@media (max-width: 480px) {
+  h1 {
+    font-size: 1.2rem;
+  }
+  
+  .service-status,
+  .comfyui-status {
+    font-size: 0.65rem;
+    padding: 0.2rem 0.4rem;
+  }
+  
+  .main-container {
+    padding: 0.25rem;
+  }
+  
+  .content {
+    padding: 0.25rem;
   }
 }
 </style>

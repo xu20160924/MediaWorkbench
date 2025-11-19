@@ -8,9 +8,7 @@
       </div>
     </div>
 
-    <n-card>
-      <n-data-table :columns="columns" :data="filteredTemplates" :pagination="{ pageSize: 8 }" />
-    </n-card>
+    <n-data-table :columns="columns" :data="filteredTemplates" :pagination="{ pageSize: 8 }" />
 
     <n-modal v-model:show="showModal" preset="card" :title="modalTitle" :style="{ width: '720px' }">
       <n-form :model="form" label-placement="left" label-width="100">
@@ -40,7 +38,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, h } from 'vue'
 import { useMessage, NButton, NSpace } from 'naive-ui'
-import { NCard, NDataTable, NInput, NSelect, NForm, NFormItem, NModal, NTag, NIcon } from 'naive-ui'
+import { NDataTable, NInput, NSelect, NForm, NFormItem, NModal, NTag, NIcon } from 'naive-ui'
 import type { DataTableColumns } from 'naive-ui'
 import { CopyOutline, SendOutline, ConstructOutline, TrashOutline } from '@vicons/ionicons5'
 import emitter from '@/utils/eventbus'
@@ -100,6 +98,8 @@ const filteredTemplates = computed(() => {
   )
 })
 
+const modalTitle = computed(() => isEditing.value ? '编辑模板' : '新增模板')
+
 const columns: DataTableColumns<PromptTemplate> = [
   { title: '名称', key: 'name' },
   { title: '分类', key: 'category' },
@@ -158,7 +158,6 @@ const columns: DataTableColumns<PromptTemplate> = [
           {
             size: 'small',
             type: 'error',
-            disabled: !!row.locked,
             onClick: () => removeTemplate(row.id)
           },
           { default: () => [h(NIcon, null, { default: () => h(TrashOutline) }), ' 删除'] }
@@ -183,20 +182,27 @@ function loadFromStorage() {
 
 async function loadDefaults() {
   try {
+    // Remove old system templates that are no longer needed
+    const systemTemplateIds = ['enhance_system', 'caption_system']
+    templates.value = templates.value.filter(t => !systemTemplateIds.includes(t.id))
+    
     const resp = await fetch((import.meta.env.VITE_API_BASE_URL || '/api') + '/prompt/templates')
     const json = await resp.json()
     if (json && json.success && Array.isArray(json.data)) {
-      const defaults = json.data.map((t: any) => ({
-        id: t.id,
-        name: t.name,
-        category: t.category,
-        tags: t.tags || [],
-        content: t.content,
-        locked: true,
-        updated_at: new Date().toISOString()
-      }))
+      // Filter out system templates from backend response
+      const defaults = json.data
+        .filter((t: any) => !t.tags?.includes('系统模板'))
+        .map((t: any) => ({
+          id: t.id,
+          name: t.name,
+          category: t.category,
+          tags: t.tags || [],
+          content: t.content,
+          locked: true,
+          updated_at: new Date().toISOString()
+        }))
       const existingIds = new Set(templates.value.map(t => t.id))
-      defaults.forEach(d => {
+      defaults.forEach((d: any) => {
         if (!existingIds.has(d.id)) templates.value.unshift(d)
       })
       saveToStorage()
@@ -263,6 +269,17 @@ function applyToAgent(row: PromptTemplate) {
 
 onMounted(async () => {
   loadFromStorage()
+  // Force remove system templates immediately (by ID, name, or tag)
+  templates.value = templates.value.filter(t => {
+    // Remove by specific IDs
+    if (t.id === 'enhance_system' || t.id === 'caption_system') return false
+    // Remove if name contains "系统模板"
+    if (t.name?.includes('系统模板')) return false
+    // Remove if tags contain "系统模板"
+    if (t.tags?.includes('系统模板')) return false
+    return true
+  })
+  saveToStorage()
   await loadDefaults()
 })
 </script>
