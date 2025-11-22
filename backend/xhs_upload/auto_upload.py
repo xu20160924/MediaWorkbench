@@ -30,6 +30,9 @@ class XhsUploader:
         self.xhs_client = self.initXhsClient()
 
     def initXhsClient(self):
+        # Initialize XhsClient with signing function
+        # Requires external signing service to be running
+        logger.info("Initializing XhsClient with external signing service...")
         return XhsClient(cookie=self.cookie, sign=self.sign)
 
     def get_images_from_directory(self, directory: str) -> List[str]:
@@ -106,14 +109,38 @@ class XhsUploader:
         return processed_images
 
     def sign(self, uri, data, a1="", web_session=""):
-        # 填写自己的 flask 签名服务端口地址
-        res = requests.post("http://192.168.1.150:5005/sign",
-                            json={"uri": uri, "data": data, "a1": a1, "web_session": web_session})
-        signs = res.json()
-        return {
-            "x-s": signs["x-s"],
-            "x-t": signs["x-t"]
-        }
+        """
+        Use xhs library's built-in Playwright signing
+        No external service needed!
+        
+        Note: The internal sign function signature is (uri, data, ctime, a1, b1)
+        We map our parameters accordingly
+        """
+        try:
+            # Import the internal sign function from xhs library
+            from xhs.help import sign as xhs_internal_sign
+            
+            logger.info("Using xhs library's built-in Playwright signing...")
+            logger.debug(f"Sign request - URI: {uri}, Data: {data}")
+            
+            # Call the internal sign function
+            # Signature: sign(uri, data=None, ctime=None, a1='', b1='')
+            # It will use Playwright automatically
+            result = xhs_internal_sign(uri, data=data, a1=a1)
+            
+            logger.info("✓ Successfully generated signature using built-in signing")
+            
+            # The result format should match what XhsClient expects
+            return {
+                "x-s": result.get("X-s", result.get("x-s", "")),
+                "x-t": str(result.get("X-t", result.get("x-t", "")))
+            }
+            
+        except Exception as e:
+            logger.error(f"✗ Error getting XHS signature: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            raise Exception(f"XHS签名生成失败: {str(e)}") from e
 
     def upload_note(self, title, desc, images, topics, is_private=True):
         """

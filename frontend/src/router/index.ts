@@ -9,6 +9,7 @@ import ImageManagement from '@/views/ImageManagement.vue'
 import ParticipationProcessComponent from '@/components/ParticipationProcess.vue'
 import PromptTemplates from '@/views/PromptTemplates.vue'
 import LLMModels from '@/views/LLMModels.vue'
+import AdvertisementTasks from '@/views/AdvertisementTasks.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -62,6 +63,19 @@ const router = createRouter({
       path: '/llm-models',
       name: 'llm-models',
       component: LLMModels
+    },
+    {
+      path: '/advertisement-tasks',
+      name: 'advertisement-tasks',
+      component: AdvertisementTasks
+    },
+    {
+      path: '/advertisement-tasks/participate/:id',
+      name: 'advertisement-task-participation',
+      component: ParticipationProcessComponent,
+      props: route => ({ 
+        advertisementTaskId: route.params.id 
+      })
     }
   ]
 })

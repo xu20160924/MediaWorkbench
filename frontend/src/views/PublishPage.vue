@@ -1,7 +1,14 @@
 <template>
   <div class="publish-page">
-    <h2>内容发布</h2>
-    <n-card size="small">
+    <div class="page-header">
+      <n-radio-group v-model:value="activeTab" name="publish-tabs" class="tab-buttons">
+        <n-radio-button value="publish">发布笔记</n-radio-button>
+        <n-radio-button value="history">发布历史</n-radio-button>
+      </n-radio-group>
+    </div>
+    
+    <div v-if="activeTab === 'publish'" class="tab-content">
+        <n-card size="small">
       <n-form
         ref="formRef"
         :model="formData"
@@ -95,22 +102,33 @@
         </n-button>
       </n-space>
     </n-card>
-
-    <n-modal
-      v-model:show="showPreview"
-      preset="card"
-      style="width: 800px"
-      title="图片预览"
-    >
-      <img :src="previewImageUrl" style="width: 100%">
-    </n-modal>
+        <n-modal
+          v-model:show="showPreview"
+          preset="card"
+          style="width: 800px"
+          title="图片预览"
+        >
+          <img :src="previewImageUrl" style="width: 100%">
+        </n-modal>
+    </div>
+    
+    <div v-else-if="activeTab === 'history'" class="tab-content">
+      <n-data-table
+        :columns="noteColumns"
+        :data="publishedNotes"
+        :pagination="notePagination"
+        :loading="loadingNotes"
+        @update:page="handleNotesPageChange"
+      />
+    </div>
   </div>
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, onMounted } from 'vue'
-import { publishNote, uploadImage, listActiveUsers, getUserCookie } from '../api/functions'
-import type { PublishNoteParams, ApiResponse, UploadImageResponse, ActiveUser, UserCookieResponse } from '../api/config'
+import { defineComponent, ref, onMounted, h } from 'vue'
+import { publishNote, uploadImage, listActiveUsers, listNotes } from '../api/functions'
+import type { ApiResponse, UploadImageResponse, ActiveUser, Note, ListNotesResponse } from '../api/config'
+import { NTag, NButton, NSpace, type DataTableColumns } from 'naive-ui'
 import type { UploadFileInfo } from 'naive-ui'
 import { useMessage } from 'naive-ui'
 import type { FormInst } from 'naive-ui'
@@ -122,12 +140,25 @@ const HOT_TOPICS = [
 
 export default defineComponent({
   setup() {
+    const activeTab = ref('publish')
     const formRef = ref<FormInst | null>(null)
     const uploadFiles = ref([])
     const isPublishing = ref(false)
     const selectedTopics = ref<string[]>([])
     const message = useMessage()
     const userOptions = ref<{ label: string; value: number }[]>([])
+    
+    // Published notes state
+    const publishedNotes = ref<Note[]>([])
+    const loadingNotes = ref(false)
+    const notePagination = ref({
+      page: 1,
+      pageSize: 10,
+      showSizePicker: true,
+      pageSizes: [10, 20, 50],
+      itemCount: 0,
+      prefix: ({ itemCount }: any) => `总共 ${itemCount} 条记录`
+    })
     
     const formData = ref({
       userId: undefined as number | undefined,
@@ -323,8 +354,123 @@ export default defineComponent({
         formRef.value?.restoreValidation()
       }
     }
+    
+    // Published notes functions
+    const fetchPublishedNotes = async (page: number = 1) => {
+      loadingNotes.value = true
+      try {
+        const response = await listNotes({ page, per_page: notePagination.value.pageSize }) as ApiResponse<ListNotesResponse>
+        if (response.success && response.data) {
+          publishedNotes.value = response.data.notes
+          notePagination.value.itemCount = response.data.total
+          notePagination.value.page = response.data.page
+        }
+      } catch (error: any) {
+        message.error('获取发布历史失败')
+      } finally {
+        loadingNotes.value = false
+      }
+    }
+    
+    const handleNotesPageChange = (page: number) => {
+      fetchPublishedNotes(page)
+    }
+    
+    const noteColumns: DataTableColumns<Note> = [
+      {
+        title: 'ID',
+        key: 'id',
+        width: 60
+      },
+      {
+        title: '标题',
+        key: 'title',
+        ellipsis: {
+          tooltip: true
+        },
+        width: 200
+      },
+      {
+        title: '描述',
+        key: 'description',
+        ellipsis: {
+          tooltip: true
+        },
+        width: 300,
+        render: (row: Note) => {
+          return row.description.substring(0, 100) + (row.description.length > 100 ? '...' : '')
+        }
+      },
+      {
+        title: '话题',
+        key: 'topics',
+        width: 150,
+        render: (row: Note) => {
+          return h(
+            NSpace,
+            { size: 'small' },
+            {
+              default: () => row.topics.slice(0, 3).map(topic => 
+                h(NTag, { size: 'small', type: 'info' }, { default: () => topic })
+              )
+            }
+          )
+        }
+      },
+      {
+        title: '状态',
+        key: 'status',
+        width: 100,
+        render: (row: Note) => {
+          const statusMap = {
+            'published': { type: 'success' as const, text: '已发布' },
+            'publishing': { type: 'warning' as const, text: '发布中' },
+            'failed': { type: 'error' as const, text: '失败' }
+          }
+          const status = statusMap[row.status] || { type: 'default' as const, text: row.status }
+          return h(NTag, { type: status.type }, { default: () => status.text })
+        }
+      },
+      {
+        title: '发布时间',
+        key: 'published_at',
+        width: 180,
+        render: (row: Note) => {
+          return row.published_at ? new Date(row.published_at).toLocaleString('zh-CN') : '-'
+        }
+      },
+      {
+        title: '操作',
+        key: 'actions',
+        width: 100,
+        render: (row: Note) => {
+          return h(
+            NButton,
+            {
+              size: 'small',
+              type: 'primary',
+              text: true,
+              onClick: () => {
+                if (row.note_id && row.xhs_response) {
+                  window.open(`https://www.xiaohongshu.com/explore/${row.note_id}`, '_blank')
+                } else {
+                  message.warning('笔记未成功发布')
+                }
+              }
+            },
+            { default: () => '查看' }
+          )
+        }
+      }
+    ]
+    
+    // Fetch notes on mount
+    onMounted(() => {
+      fetchPublishedNotes()
+    })
 
     return {
+      activeTab,
       formRef,
       formData,
       rules,
@@ -340,7 +486,12 @@ export default defineComponent({
       showPreview,
       previewImageUrl,
       handlePreview,
-      handleUserChange
+      handleUserChange,
+      publishedNotes,
+      loadingNotes,
+      notePagination,
+      noteColumns,
+      handleNotesPageChange
     }
   }
 })
@@ -348,9 +499,30 @@ export default defineComponent({
 
 <style scoped>
 .publish-page {
-  min-height: calc(80vh - 64px);
-  margin: 0px auto;
-  padding: 0px;
+  width: 100%;
+  padding: 24px;
+}
+
+/* Header with tab buttons - matches advertisement tab style */
+.page-header {
+  margin-bottom: 24px;
+  display: flex;
+  align-items: center;
+}
+
+/* Remove card padding and borders to match advertisement tasks layout */
+.tab-content :deep(.n-card) {
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.tab-content :deep(.n-card__content) {
+  padding: 0 !important;
+}
+
+/* Add vertical spacing to form for readability */
+.tab-content :deep(.n-form) {
+  padding: 16px 0;
 }
 
 /* :deep(.n-card) {

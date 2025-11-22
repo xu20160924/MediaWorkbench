@@ -12,6 +12,8 @@ dependencies = [
     "flask-migrate>=4.1.0",
     "sqlalchemy>=2.0.0",
     "alembic>=1.13.1",
+    "pymysql>=1.1.0",
+    "cryptography>=41.0.0",
     
     # Web & API
     "aiohttp>=3.11.11",

@@ -23,7 +23,7 @@ export interface HealthCheckResponse extends ApiResponse<{
 export interface PublishNoteParams {
   title: string
   description: string
-  cookie: string
+  userId: number
   is_private: boolean
   images: string[]
   topics: string[]
@@ -251,4 +251,35 @@ export interface GetWorkflowVariablesResponse {
 
 export interface UserCookieResponse {
   cookie: string
+}
+
+// Note interfaces
+export interface Note {
+  id: number
+  note_id: string | null
+  title: string
+  description: string
+  image_paths: string[]
+  topics: string[]
+  is_private: boolean
+  user_id: number
+  xhs_response: any
+  created_at: string
+  published_at: string | null
+  status: 'publishing' | 'published' | 'failed'
+  error_message: string | null
+}
+
+export interface ListNotesParams {
+  page?: number
+  per_page?: number
+  status?: string
+}
+
+export interface ListNotesResponse {
+  notes: Note[]
+  total: number
+  page: number
+  per_page: number
+  pages: number
 }

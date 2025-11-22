@@ -183,6 +183,8 @@ cython_debug/
 
 .DS_Store
 package-lock.json
+node_modules/
 app.db
 *.png
 *.jpg
+pre-push-check.sh

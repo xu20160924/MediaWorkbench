@@ -157,26 +157,30 @@ const columns: DataTableColumns = [
     title: '操作',
     key: 'actions',
     render(row: User) {
-      return [
-        h(
-          NButton,
-          {
-            text: true,
-            type: 'primary',
-            onClick: () => handleEditClick(row)
-          },
-          { default: () => '编辑' }
-        ),
-        h(
-          NButton,
-          {
-            text: true,
-            type: 'error',
-            onClick: () => handleDelete(row.id)
-          },
-          { default: () => '删除' }
-        )
-      ]
+      return h(
+        'div',
+        { style: 'display: flex; gap: 8px;' },
+        [
+          h(
+            NButton,
+            {
+              size: 'small',
+              type: 'primary',
+              onClick: () => handleEditClick(row)
+            },
+            { default: () => '编辑' }
+          ),
+          h(
+            NButton,
+            {
+              size: 'small',
+              type: 'error',
+              onClick: () => handleDelete(row.id)
+            },
+            { default: () => '删除' }
+          )
+        ]
+      )
     }
   }
 ]

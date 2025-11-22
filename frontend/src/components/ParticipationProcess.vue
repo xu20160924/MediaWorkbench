@@ -49,8 +49,8 @@
             </n-icon>
           </div>
           <div class="empty-text">
-            <p class="empty-title">暂无普通图片</p>
-            <p class="empty-description">请确保数据库中有 image_type 为 "general" 且 participated 为 false 的图片</p>
+            <p class="empty-title">暂无可用普通图片</p>
+            <p class="empty-description">所有普通图片已被使用，请上传新图片或重置已使用的图片</p>
           </div>
         </div>
       </n-card>
@@ -67,7 +67,7 @@
     <!-- Step 2: Select Advertisement Images -->
     <div v-else-if="step === 2" class="step-container">
       <div class="step-header">
-        <h2>步骤 2: 选择广告图片 ({{ advertisementImages.length }})</h2>
+        <h2>步骤 2: 选择活动图片 ({{ advertisementImages.length }})</h2>
         <div style="display: flex; gap: 8px;">
           <n-button secondary @click="toggleDebugPanel" size="small">
             {{ showDebugPanel ? '隐藏调试' : '显示调试' }}
@@ -91,7 +91,7 @@
           <strong>API 返回总数:</strong> {{ debugInfo.totalImages }}
         </div>
         <div class="debug-item">
-          <strong>广告图片数量:</strong> {{ debugInfo.adImages }}
+          <strong>活动图片数量:</strong> {{ debugInfo.adImages }}
         </div>
         <div class="debug-item">
           <strong>常规图片数量:</strong> {{ debugInfo.generalImages }}
@@ -103,13 +103,13 @@
           ⚠️ {{ debugInfo.warning }}
         </div>
         <div class="debug-item">
-          <strong>所有广告图片:</strong>
+          <strong>所有活动图片:</strong>
           <div v-for="img in advertisementImages" :key="img.id" style="margin-left: 16px; font-size: 12px;">
             • ID: {{ img.id }} - {{ img.filename }} [{{ img.image_type }}]
           </div>
         </div>
       </div>
-      <n-card title="广告图片" class="image-card" :key="'ad-grid-' + renderKey">
+      <n-card title="活动图片" class="image-card" :key="'ad-grid-' + renderKey">
         <div v-if="advertisementImages.length === 0" class="empty-state">
           <div class="empty-icon">
             <n-icon size="48" color="#999">
@@ -117,8 +117,8 @@
             </n-icon>
           </div>
           <div class="empty-text">
-            <p class="empty-title">暂无广告图片</p>
-            <p class="empty-description">请点击下方按钮添加广告图片</p>
+            <p class="empty-title">暂无活动图片</p>
+            <p class="empty-description">请点击下方按钮添加活动图片</p>
           </div>
         </div>
         <div v-else class="image-grid-container">
@@ -139,7 +139,7 @@
             />
             <div class="image-info">
               <span class="image-name">{{ image.filename }}</span>
-              <n-tag type="warning" size="small">广告图片</n-tag>
+              <n-tag type="warning" size="small">活动图片</n-tag>
             </div>
           </div>
         </div>
@@ -149,7 +149,7 @@
             <template #icon>
               <n-icon><add /></n-icon>
             </template>
-            添加广告图片
+            添加活动图片
           </n-button>
         </div>
       </n-card>
@@ -172,7 +172,7 @@
       <n-modal 
         v-model:show="showAddAdvertisementModal" 
         preset="card" 
-        title="添加广告图片" 
+        title="添加活动图片" 
         :mask-closable="true" 
         @after-enter="focusPasteDiv"
         @after-leave="handleModalClose"
@@ -196,7 +196,7 @@
               <template #icon>
                 <n-icon><upload-cloud /></n-icon>
               </template>
-              上传广告图片
+              上传活动图片
             </n-button>
           </n-upload>
           <div class="paste-divider">
@@ -331,6 +331,20 @@
             />
           </n-form-item>
         </n-form>
+        
+        <!-- Preview Info Summary -->
+        <div v-if="previewPromptData" class="preview-info-summary">
+          <n-alert type="info" :show-icon="true">
+            <div style="font-size: 13px;">
+              <div style="font-weight: 600; margin-bottom: 8px;">🔍 准备生成的内容预览</div>
+              <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                <n-tag type="primary" size="small">普通图片: {{ previewPromptData.regular_images }} 张</n-tag>
+                <n-tag type="success" size="small">活动图片: {{ previewPromptData.event_images }} 张</n-tag>
+                <n-tag type="info" size="small">模型: {{ previewPromptData.model }}</n-tag>
+              </div>
+            </div>
+          </n-alert>
+        </div>
       </n-card>
       <div class="step-actions">
         <n-button @click="prevStep">
@@ -339,16 +353,164 @@
           </template>
           上一步
         </n-button>
-        <n-button type="primary" @click="generatePrompt" :loading="generating">
+        <n-button type="primary" @click="confirmAndGenerate" :loading="generating">
           <template #icon>
             <n-icon><sparkles /></n-icon>
           </template>
           {{ generating ? '生成中...' : '生成文案' }}
         </n-button>
       </div>
+    </div>
 
-      <!-- Generated Prompt Modal -->
-      <n-modal v-model:show="showGeneratedPromptModal" preset="card" title="生成的文案" :mask-closable="true">
+    <!-- Step 4: Preview & Confirm -->
+    <div v-else-if="step === 4" class="step-container">
+      <h2>步骤 4: 确认发布内容</h2>
+      <n-card title="内容预览" class="preview-card">
+        <!-- Data Summary -->
+        <n-alert type="success" style="margin-bottom: 16px;" :show-icon="true">
+          <div style="font-size: 13px;">
+            <div style="font-weight: 600; margin-bottom: 8px;">✅ 文案生成完成</div>
+            <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+              <n-tag type="primary" size="small">普通图片: {{ selectedRegularImagesSet.size }} 张</n-tag>
+              <n-tag type="success" size="small">活动图片: {{ selectedAdvertisementImagesSet.size }} 张</n-tag>
+              <n-tag type="info" size="small">总计: {{ selectedRegularImagesSet.size + selectedAdvertisementImagesSet.size }} 张</n-tag>
+              <n-tag type="warning" size="small">模型: {{ previewPromptData?.model }}</n-tag>
+            </div>
+          </div>
+        </n-alert>
+
+        <!-- Selected Images Preview -->
+        <div class="preview-section">
+          <h3>📷 已选图片</h3>
+          <div class="image-grid-preview">
+            <div 
+              v-for="img in getSelectedImages().slice(0, 9)"
+              :key="img.id"
+              class="preview-image-item"
+            >
+              <img :src="getImageUrl(img)" :alt="img.filename" />
+            </div>
+            <div v-if="selectedRegularImagesSet.size + selectedAdvertisementImagesSet.size > 9" class="preview-more">
+              +{{ selectedRegularImagesSet.size + selectedAdvertisementImagesSet.size - 9 }}
+            </div>
+          </div>
+        </div>
+
+        <!-- Generated Text -->
+        <div class="preview-section">
+          <h3>📝 生成的文案</h3>
+          <n-input
+            v-model:value="generatedPrompt"
+            type="textarea"
+            :autosize="{ minRows: 8, maxRows: 20 }"
+            placeholder="生成的文案将显示在这里..."
+            class="generated-text-editor"
+          />
+        </div>
+
+        <!-- Task Info (if available) -->
+        <div class="preview-section" v-if="previewPromptData?.task_info">
+          <h3>📋 任务信息</h3>
+          <div class="task-info-preview">
+            <div v-if="previewPromptData.task_info.task_title"><strong>任务标题:</strong> {{ previewPromptData.task_info.task_title }}</div>
+            <div v-if="previewPromptData.task_info.hashtags"><strong>话题标签:</strong> <span style="color: #ff2442;">{{ previewPromptData.task_info.hashtags }}</span></div>
+            <div v-if="previewPromptData.task_info.tag_require"><strong>标签要求:</strong> {{ previewPromptData.task_info.tag_require }}</div>
+            <div v-if="previewPromptData.task_info.submission_rules"><strong>提交规则:</strong> {{ previewPromptData.task_info.submission_rules }}</div>
+          </div>
+        </div>
+      </n-card>
+
+      <div class="step-actions">
+        <n-button @click="prevStep">
+          <template #icon>
+            <n-icon><arrow-back /></n-icon>
+          </template>
+          返回修改
+        </n-button>
+        <n-space>
+          <n-button @click="copyGeneratedPrompt">
+            <template #icon>
+              <n-icon><copy /></n-icon>
+            </template>
+            复制文案
+          </n-button>
+          <n-button type="primary" :loading="posting" @click="publishPost">
+            <template #icon>
+              <n-icon><checkmark-circle /></n-icon>
+            </template>
+            {{ posting ? '发布中...' : '发布到小红书' }}
+          </n-button>
+          <n-button type="success" @click="step = 1">
+            完成
+          </n-button>
+        </n-space>
+      </div>
+    </div>
+
+    <!-- Preview Prompt Modal -->
+    <n-modal 
+        v-model:show="showPreviewPromptModal" 
+        preset="card" 
+        title="🔍 预览提示词" 
+        :style="{ width: '900px' }"
+        :mask-closable="false"
+      >
+        <div v-if="previewPromptData" class="preview-prompt-content">
+          <n-alert type="info" style="margin-bottom: 16px;" :show-icon="true">
+            即将使用以下内容生成文案，请确认无误后点击"确认生成"
+          </n-alert>
+          
+          <div class="preview-section">
+            <div class="preview-label">📊 数据统计</div>
+            <n-space>
+              <n-tag type="primary">普通图片: {{ previewPromptData.regular_images }} 张</n-tag>
+              <n-tag type="success">活动图片: {{ previewPromptData.event_images }} 张</n-tag>
+              <n-tag type="warning" v-if="previewPromptData.rule_images > 0">规则图片: {{ previewPromptData.rule_images }} 张</n-tag>
+            </n-space>
+          </div>
+          
+          <div class="preview-section">
+            <div class="preview-label">🤖 LLM 模型</div>
+            <n-tag type="info">{{ previewPromptData.model }}</n-tag>
+          </div>
+          
+          <div class="preview-section" v-if="previewPromptData.task_info">
+            <div class="preview-label">📋 任务信息</div>
+            <div style="padding: 12px; background: #f5f5f5; border-radius: 6px; font-size: 13px; line-height: 1.8;">
+              <div v-if="previewPromptData.task_info.task_title"><strong>任务标题:</strong> {{ previewPromptData.task_info.task_title }}</div>
+              <div v-if="previewPromptData.task_info.hashtags"><strong>话题标签:</strong> {{ previewPromptData.task_info.hashtags }}</div>
+              <div v-if="previewPromptData.task_info.tag_require"><strong>标签要求:</strong> {{ previewPromptData.task_info.tag_require }}</div>
+              <div v-if="previewPromptData.task_info.submission_rules"><strong>提交规则:</strong> {{ previewPromptData.task_info.submission_rules }}</div>
+            </div>
+          </div>
+          
+          <div class="preview-section">
+            <div class="preview-label">💬 自定义提示词</div>
+            <n-input
+              :value="previewPromptData.custom_prompt"
+              type="textarea"
+              :autosize="{ minRows: 8, maxRows: 15 }"
+              readonly
+              style="font-family: 'Monaco', 'Menlo', monospace; font-size: 13px;"
+            />
+          </div>
+        </div>
+        
+        <template #footer>
+          <n-space justify="end">
+            <n-button @click="cancelPreview">取消</n-button>
+            <n-button type="primary" :loading="generating" @click="confirmAndGenerate">
+              <template #icon>
+                <n-icon><sparkles /></n-icon>
+              </template>
+              确认生成
+            </n-button>
+          </n-space>
+        </template>
+    </n-modal>
+
+    <!-- Generated Prompt Modal -->
+    <n-modal v-model:show="showGeneratedPromptModal" preset="card" title="生成的文案" :mask-closable="true">
         <div class="generated-prompt">
           <n-input
             v-model:value="generatedPrompt"
@@ -366,8 +528,7 @@
             复制
           </n-button>
         </div>
-      </n-modal>
-    </div>
+    </n-modal>
     
     <!-- Full-Screen Image Preview Modal -->
     <n-modal 
@@ -495,7 +656,7 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, reactive, onMounted, watch, computed } from 'vue';
+import { defineComponent, ref, reactive, onMounted, onActivated, watch, computed } from 'vue';
 import { ArrowBack, ArrowForward, Add, CloudUploadOutline as UploadCloud, Sparkles, Copy, ClipboardOutline, ImageOutline, CheckmarkCircle, CloseCircle, CloseOutline, EyeOutline, ResizeOutline, SyncOutline, RemoveOutline, AddOutline, ExpandOutline } from '@vicons/ionicons5';
 import { NModal, NCard, NButton, NIcon, NTag, NUpload, NForm, NFormItem, NInput, NSelect, NAlert, NDivider, NDynamicTags, NButtonGroup } from 'naive-ui';
 import { useMessage } from 'naive-ui';
@@ -526,6 +687,10 @@ export default defineComponent({
   name: 'ParticipationProcess',
   props: {
     initialRuleImageId: {
+      type: [Number, String],
+      default: null,
+    },
+    advertisementTaskId: {
       type: [Number, String],
       default: null,
     },
@@ -574,11 +739,18 @@ export default defineComponent({
     const advertisementImages = ref<ImageItem[]>([]);
     const showAddAdvertisementModal = ref(false);
     const showGeneratedPromptModal = ref(false);
+    const showPreviewPromptModal = ref(false);
     const generatedPrompt = ref('');
+    const previewPromptData = ref<any>(null);
     const generating = ref(false);
+    const posting = ref(false);
     const isPasteAreaActive = ref(false);
     const pasteAreaFocused = ref(false);
     const pasteDiv = ref<HTMLElement | null>(null);
+    
+    // Advertisement task support
+    const advertisementTask = ref<any>(null);
+    const loadingTask = ref(false);
     
     // Clipboard pasting enhancement
     const pastedImages = ref<Array<{ preview: string; name: string; status: 'pending' | 'uploading' | 'success' | 'error'; error?: string }>>([]);
@@ -681,9 +853,18 @@ export default defineComponent({
           
           // Create options for the select dropdown
           promptTemplateOptions.value = templates.map((t: any) => ({
-            label: `${t.name}${t.category ? ` [${t.category}]` : ''}`,
+            label: `${t.name}${t.category ? ` [${t.category}]` : ''}${t.is_default ? ' (默认)' : ''}`,
             value: t.id
           }));
+          
+          // Auto-select the default template if it exists
+          const defaultTemplate = templates.find((t: any) => t.is_default);
+          if (defaultTemplate && !selectedTemplate.value) {
+            selectedTemplate.value = defaultTemplate.id;
+            // Automatically apply the default template
+            applyTemplate(defaultTemplate.id);
+            if (isDev) console.log('[Templates] Auto-applied default template:', defaultTemplate.name);
+          }
           
           if (isDev) console.log('[Templates] Loaded', templates.length, 'prompt templates');
         } else {
@@ -696,10 +877,34 @@ export default defineComponent({
       }
     };
     
-    // Apply selected template to form
+    // Replace placeholders in template with actual task data
+    const replacePlaceholders = (content: string): string => {
+      if (!advertisementTask.value) {
+        return content;
+      }
+      
+      const task = advertisementTask.value;
+      const replacements: Record<string, string> = {
+        '{task_title}': task.task_title || '',
+        '{hashtags}': (task.hashtags || []).join(' ') || '',
+        '{tag_require}': task.tag_require || '',
+        '{submission_rules}': task.submission_rules || '',
+        '{task_id}': task.id?.toString() || ''
+      };
+      
+      let result = content;
+      for (const [placeholder, value] of Object.entries(replacements)) {
+        // Use split/join for broader TypeScript compatibility
+        result = result.split(placeholder).join(value);
+      }
+      
+      return result;
+    };
+
+    // Apply a template to customPrompt
     const applyTemplate = (templateId: string | null) => {
       if (!templateId) {
-        // Template cleared, do nothing
+        if (isDev) console.log('[Template] Cleared template selection');
         return;
       }
       
@@ -709,10 +914,19 @@ export default defineComponent({
         return;
       }
       
-      // Apply template content to customPrompt field
-      formData.customPrompt = template.content;
+      // Apply template content with placeholder replacement
+      const processedContent = replacePlaceholders(template.content);
+      formData.customPrompt = processedContent;
       
-      message.success(`已应用模板: ${template.name}`);
+      // Show info message based on whether placeholders were replaced
+      const hasPlaceholders = template.content.includes('{task_');
+      if (hasPlaceholders && advertisementTask.value) {
+        message.success(`已应用模板: ${template.name}（包含任务信息）`);
+      } else if (hasPlaceholders && !advertisementTask.value) {
+        message.warning(`已应用模板: ${template.name}（未加载任务信息，占位符未替换）`);
+      } else {
+        message.success(`已应用模板: ${template.name}`);
+      }
       
       if (isDev) console.log('[Template] Applied template:', template.name);
     };
@@ -762,24 +976,26 @@ export default defineComponent({
       
       const path = image.file_path;
       let url: string;
+      const backendUrl = 'http://localhost:5001';  // Backend server URL
       
       // Handle uploaded images: /uploads/filename or upload/images/filename
       if (path.startsWith('/uploads/')) {
         const filename = path.substring('/uploads/'.length);
-        url = `/api/images/uploads/${filename}`;
+        url = `${backendUrl}/api/images/uploads/${filename}`;
       } else if (path.includes('upload/images/')) {
         const filename = path.split('upload/images/')[1];
-        url = `/api/images/uploads/${filename}`;
+        url = `${backendUrl}/api/images/uploads/${filename}`;
       } else if (path.includes('output/images/')) {
         // Handle generated/output images: output/images/filename
         const filename = path.split('output/images/')[1];
-        url = `/api/images/output/${filename}`;
+        url = `${backendUrl}/api/images/output/${filename}`;
       } else if (path.startsWith('/output/')) {
         const filename = path.substring('/output/'.length);
-        url = `/api/images/output/${filename}`;
+        url = `${backendUrl}/api/images/output/${filename}`;
       } else {
-        // For other paths, return as-is (might be absolute paths for local_dir images)
-        url = path;
+        // For all other paths (including absolute paths from default locations),
+        // use the backend API to serve the image by ID
+        url = `${backendUrl}/api/images/${image.id}/file`;
       }
       
       // Cache the result
@@ -805,6 +1021,27 @@ export default defineComponent({
       }
       // Trigger reactivity
       selectedAdvertisementImagesSet.value = new Set(selectedAdvertisementImagesSet.value);
+    };
+
+    const loadAdvertisementTask = async () => {
+      loadingTask.value = true;
+      try {
+        const response = await fetch(`http://localhost:5001/api/advertisement-tasks/${props.advertisementTaskId}`);
+        const data = await response.json();
+        
+        if (data.success) {
+          advertisementTask.value = data.data;
+          console.log('[LoadTask] Advertisement task loaded:', advertisementTask.value);
+          console.log('[LoadTask] Task will be used as context in step 3');
+        } else {
+          message.error('加载任务失败: ' + data.message);
+        }
+      } catch (error) {
+        console.error('[LoadTask] Error loading advertisement task:', error);
+        message.error('加载任务失败');
+      } finally {
+        loadingTask.value = false;
+      }
     };
 
     const loadImages = async () => {
@@ -868,19 +1105,19 @@ export default defineComponent({
           participated: img.participated
         })));
 
-        // Filter unused regular images - this is the critical filter
+        // Filter regular images (exclude participated ones)
         unusedRegularImages.value = allImages.filter((img: ImageItem) => 
           img.image_type === 'general' && !img.participated
         );
         
         console.log(`[LoadImages] Filtered regular images: ${unusedRegularImages.value.length}`);
 
-        // Filter advertisement images
+        // Filter advertisement images (exclude participated ones)
         const oldAdCount = advertisementImages.value.length;
         const oldIds = advertisementImages.value.map(img => img.id);
         
         const newAdImages = allImages.filter((img: ImageItem) => 
-          img.image_type === 'advertising_campaign'
+          img.image_type === 'advertising_campaign' && !img.participated
         );
         
         // Force Vue reactivity by creating new array reference
@@ -960,7 +1197,28 @@ export default defineComponent({
       console.log('[UPLOAD FINISH] ============ UPLOAD COMPLETED ============');
       console.log('[UPLOAD FINISH] Upload response:', options);
       
-      message.success('图片上传成功');
+      // Extract image ID from response and auto-select
+      try {
+        const response = options.event?.target?.response;
+        if (response) {
+          const result = typeof response === 'string' ? JSON.parse(response) : response;
+          if (result.success && result.data && result.data.id) {
+            const imageId = result.data.id;
+            selectedAdvertisementImagesSet.value.add(imageId);
+            // Trigger reactivity
+            selectedAdvertisementImagesSet.value = new Set(selectedAdvertisementImagesSet.value);
+            console.log(`[UPLOAD FINISH] Auto-selected uploaded image ID: ${imageId}`);
+            message.success(`图片上传成功并已选中`);
+          } else {
+            message.success('图片上传成功');
+          }
+        } else {
+          message.success('图片上传成功');
+        }
+      } catch (error) {
+        console.error('[UPLOAD FINISH] Error parsing response:', error);
+        message.success('图片上传成功');
+      }
       
       // Fire-and-forget async reload
       (async () => {
@@ -1210,7 +1468,7 @@ export default defineComponent({
 
         // Show results with detailed feedback AFTER grid updates
         if (successfulUploads > 0 && failedUploads === 0) {
-          message.success(`✅ 成功添加 ${successfulUploads} 张图片！已添加到上方广告图片区域 ↑`);
+          message.success(`✅ 成功添加 ${successfulUploads} 张图片！已添加到上方活动图片区域 ↑`);
         } else if (successfulUploads > 0 && failedUploads > 0) {
           message.warning(`⚠️ 成功 ${successfulUploads} 张, 失败 ${failedUploads} 张。成功的图片已添加到上方 ↑`);
         } else {
@@ -1276,7 +1534,7 @@ export default defineComponent({
         await loadImages();
         
         console.log('[FORCE RELOAD] Complete! Advertisement count:', advertisementImages.value.length);
-        message.success(`刷新完成！当前有 ${advertisementImages.value.length} 张广告图片`);
+        message.success(`刷新完成！当前有 ${advertisementImages.value.length} 张活动图片`);
       } catch (error) {
         console.error('[FORCE RELOAD] Error:', error);
         message.error('刷新失败，请重试');
@@ -1387,9 +1645,42 @@ export default defineComponent({
       { immediate: true }
     );
 
+    // Show preview before generating
     const generatePrompt = async () => {
       if (selectedRegularImagesSet.value.size === 0 || selectedAdvertisementImagesSet.value.size === 0) {
-        message.error('请选择普通图片和广告图片');
+        message.error('请选择普通图片和活动图片');
+        return;
+      }
+      
+      // Check if LLM model is configured
+      if (!formData.llmModel || !formData.llmModel.trim()) {
+        message.error('请先在 LLM 模型管理中配置模型');
+        return;
+      }
+      
+      // Prepare preview data
+      previewPromptData.value = {
+        regular_images: Array.from(selectedRegularImagesSet.value).length,
+        event_images: Array.from(selectedAdvertisementImagesSet.value).length,
+        rule_images: selectedRuleImageIds.value.length,
+        custom_prompt: formData.customPrompt,
+        model: formData.llmModel,
+        task_info: advertisementTask.value ? {
+          task_title: advertisementTask.value.task_title,
+          hashtags: (advertisementTask.value.hashtags || []).map((tag: string) => tag.startsWith('#') ? tag : `#${tag}`).join(' '),
+          tag_require: advertisementTask.value.tag_require,
+          submission_rules: advertisementTask.value.submission_rules
+        } : null
+      };
+      
+      // Go to Step 4 instead of showing modal
+      step.value = 4;
+    };
+    
+    // Generate prompt directly
+    const confirmAndGenerate = async () => {
+      if (selectedRegularImagesSet.value.size === 0 || selectedAdvertisementImagesSet.value.size === 0) {
+        message.error('请选择普通图片和活动图片');
         return;
       }
       
@@ -1440,25 +1731,71 @@ export default defineComponent({
       generating.value = true;
       
       try {
+        // Build request payload
+        const requestPayload: any = {
+          regular_image_ids: Array.from(selectedRegularImagesSet.value),
+          event_image_ids: Array.from(selectedAdvertisementImagesSet.value),
+          rule_image_ids: selectedRuleImageIds.value,
+          custom_prompt: formData.customPrompt,
+          model: formData.llmModel,
+        };
+        
+        // If advertisement task is loaded, include its context
+        if (advertisementTask.value) {
+          console.log('[Generate] Including advertisement task context');
+          requestPayload.advertisement_task = {
+            task_id: advertisementTask.value.id,
+            task_title: advertisementTask.value.task_title,
+            hashtags: advertisementTask.value.hashtags || [],
+            tag_require: advertisementTask.value.tag_require || '',
+            submission_rules: advertisementTask.value.submission_rules || ''
+          };
+        }
+        
         const response = await fetch('/api/prompt/participation', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({
-            regular_image_ids: Array.from(selectedRegularImagesSet.value),
-            event_image_ids: Array.from(selectedAdvertisementImagesSet.value),
-            rule_image_ids: selectedRuleImageIds.value,
-            custom_prompt: formData.customPrompt,
-            model: formData.llmModel,
-          })
+          body: JSON.stringify(requestPayload)
         });
 
         const result = await response.json();
         if (result.success) {
-          generatedPrompt.value = result.data.prompt;
+          let finalPrompt = result.data.prompt;
+          
+          // Automatically append required tags/hashtags to LLM-generated result
+          if (advertisementTask.value && advertisementTask.value.hashtags && advertisementTask.value.hashtags.length > 0) {
+            const hashtags = advertisementTask.value.hashtags
+              .map((tag: string) => tag.startsWith('#') ? tag : `#${tag}`)
+              .join(' ');
+            // Check if hashtags are not already in the generated content
+            if (!finalPrompt.includes(hashtags)) {
+              finalPrompt = finalPrompt.trim() + '\n\n' + hashtags;
+              if (isDev) console.log('[Generate] Appended required tags to generated prompt:', hashtags);
+            }
+          }
+          
+          generatedPrompt.value = finalPrompt;
+          
+          // Prepare preview data for Step 4
+          previewPromptData.value = {
+            regular_images: Array.from(selectedRegularImagesSet.value).length,
+            event_images: Array.from(selectedAdvertisementImagesSet.value).length,
+            rule_images: selectedRuleImageIds.value.length,
+            custom_prompt: formData.customPrompt,
+            model: formData.llmModel,
+            generated_text: finalPrompt,
+            task_info: advertisementTask.value ? {
+              task_title: advertisementTask.value.task_title,
+              hashtags: (advertisementTask.value.hashtags || []).map((tag: string) => tag.startsWith('#') ? tag : `#${tag}`).join(' '),
+              tag_require: advertisementTask.value.tag_require,
+              submission_rules: advertisementTask.value.submission_rules
+            } : null
+          };
+          
           message.success('文案生成成功！');
-          showGeneratedPromptModal.value = true;
+          step.value = 4; // Go to confirmation step
         } else {
           message.error(result.message || '文案生成失败');
         }
@@ -1469,13 +1806,131 @@ export default defineComponent({
         generating.value = false;
       }
     };
+    
+    // Cancel preview
+    const cancelPreview = () => {
+      showPreviewPromptModal.value = false;
+      previewPromptData.value = null;
+    };
 
+    // Get all selected images for preview (regular images first)
+    const getSelectedImages = () => {
+      const selected: ImageItem[] = [];
+      // Add regular images first
+      selectedRegularImagesSet.value.forEach(id => {
+        const img = unusedRegularImages.value.find(i => i.id === id);
+        if (img) selected.push(img);
+      });
+      // Then add advertisement images
+      selectedAdvertisementImagesSet.value.forEach(id => {
+        const img = advertisementImages.value.find(i => i.id === id);
+        if (img) selected.push(img);
+      });
+      return selected;
+    };
+    
     const copyGeneratedPrompt = () => {
       navigator.clipboard.writeText(generatedPrompt.value).then(() => {
         message.success('文案已复制到剪贴板');
       }).catch(() => {
         message.error('复制失败');
       });
+    };
+    
+    // Publish the post to XHS
+    const publishPost = async () => {
+      if (!generatedPrompt.value || !generatedPrompt.value.trim()) {
+        message.error('请先生成文案内容');
+        return;
+      }
+      
+      if (selectedRegularImagesSet.value.size === 0 && selectedAdvertisementImagesSet.value.size === 0) {
+        message.error('请至少选择一张图片');
+        return;
+      }
+      
+      posting.value = true;
+      
+      try {
+        // Get all selected images
+        const allImages = getSelectedImages();
+        const imageUrls = allImages.map(img => `/images/${img.source}/${img.filename}`);
+        
+        // Extract title from first line or use task title
+        const lines = generatedPrompt.value.trim().split('\n');
+        const title = advertisementTask.value?.task_title || lines[0].replace(/^[#标题：]+/, '').trim() || '小红书笔记';
+        
+        // Get hashtags from task or extract from content
+        let topics = advertisementTask.value?.hashtags || [];
+        if (topics.length === 0) {
+          // Extract hashtags from content
+          const hashtagMatches = generatedPrompt.value.match(/#[^\s#]+/g);
+          if (hashtagMatches) {
+            topics = hashtagMatches;
+          }
+        }
+        
+        // Get user ID from localStorage (assuming it's stored)
+        const userId = localStorage.getItem('user_id') || '1';
+        
+        const postData = {
+          title: title,
+          description: generatedPrompt.value,
+          images: imageUrls,
+          topics: topics,
+          is_private: false,
+          userId: parseInt(userId),
+          task_id: advertisementTask.value?.id  // Include task ID for marking as participated
+        };
+        
+        if (isDev) console.log('[Publish] Publishing to XHS:', postData);
+        
+        const response = await fetch('/api/publish', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(postData)
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+          message.success('笔记发布到小红书成功！');
+          if (isDev) console.log('[Publish] XHS response:', result.data);
+          
+          // Mark images as participated
+          try {
+            const imageIds = [...Array.from(selectedRegularImagesSet.value), ...Array.from(selectedAdvertisementImagesSet.value)];
+            for (const id of imageIds) {
+              await fetch(`/api/images/${id}/participated`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' }
+              });
+            }
+          } catch (e) {
+            console.warn('[Publish] Failed to mark images as participated:', e);
+          }
+          
+          // Reset to step 1 after successful posting
+          setTimeout(() => {
+            step.value = 1;
+            generatedPrompt.value = '';
+            selectedRegularImagesSet.value.clear();
+            selectedAdvertisementImagesSet.value.clear();
+            selectedRuleImagesSet.value.clear();
+            loadImages();
+          }, 1500);
+        } else {
+          message.error(result.message || '发布失败，请重试');
+          if (isDev) console.error('[Publish] Failed:', result);
+        }
+      } catch (error) {
+        console.error('[Publish] Error posting to XHS:', error);
+        message.error('发布失败，请检查网络连接和用户登录状态');
+      } finally {
+        posting.value = false;
+      }
     };
     
     // Computed property for available stickers based on category
@@ -1755,7 +2210,18 @@ export default defineComponent({
     // Initialize lazy loading for images
     onMounted(async () => {
       console.log('[MOUNTED] Component mounted, loading images...');
+      
+      // If advertisementTaskId prop is provided, load task data as context
+      if (props.advertisementTaskId) {
+        console.log('[MOUNTED] Advertisement task mode, loading task:', props.advertisementTaskId);
+        await loadAdvertisementTask();
+        // Do NOT skip steps - let user go through normal flow
+        // Task data will be available when they reach step 3
+      }
+      
+      // Always load images for normal participation flow
       await loadImages();
+      
       loadLLMModels(); // Load connected models from localStorage
       loadPromptTemplates(); // Load prompt templates from localStorage
       console.log('[MOUNTED] Initial load complete, advertisement count:', advertisementImages.value.length);
@@ -1788,6 +2254,12 @@ export default defineComponent({
       }, 100);
     });
 
+    // Reload models when component is reactivated (e.g., navigating back from LLM Models page)
+    onActivated(() => {
+      console.log('[ACTIVATED] Component reactivated, reloading LLM models...');
+      loadLLMModels(); // Refresh models from localStorage
+    });
+
     return {
       step,
       selectedRegularImagesSet,
@@ -1798,8 +2270,14 @@ export default defineComponent({
       advertisementImages,
       showAddAdvertisementModal,
       showGeneratedPromptModal,
+      showPreviewPromptModal,
       generatedPrompt,
+      previewPromptData,
       generating,
+      posting,
+      confirmAndGenerate,
+      cancelPreview,
+      publishPost,
       isPasteAreaActive,
       pasteAreaFocused,
       pastedImages,
@@ -1815,6 +2293,7 @@ export default defineComponent({
       promptTemplateOptions,
       selectedTemplate,
       applyTemplate,
+      advertisementTask,
       uploadUrl,
       pasteDiv,
       // Image preview/edit modal
@@ -1842,6 +2321,7 @@ export default defineComponent({
       loadImages,
       handleUploadFinish,
       generatePrompt,
+      getSelectedImages,
       copyGeneratedPrompt,
       openImagePreview,
       navigatePreview,
@@ -1942,6 +2422,10 @@ export default defineComponent({
   min-height: 300px;
 }
 
+.image-card :deep(.n-card__content) {
+  padding: 0px !important;
+}
+
 /* Optimized scrolling container with increased visible area */
 .image-grid-container {
   max-height: calc(100vh - 280px); /* Dynamic height based on viewport */
@@ -1954,6 +2438,9 @@ export default defineComponent({
   /* Optimize scrollbar rendering */
   scrollbar-width: thin;
   scrollbar-color: #888 #f1f1f1;
+  /* Account for scrollbar by using border-box */
+  box-sizing: border-box;
+  width: 100%;
 }
 
 /* Responsive height adjustments */
@@ -1988,46 +2475,44 @@ export default defineComponent({
 
 .image-grid {
   display: grid;
-  /* Large images for better detail visibility - 3-4 per row */
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 20px;
-  padding: 16px;
+  /* Fixed 2 columns for better image display */
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  padding: 4px;
   /* Optimize grid rendering */
   contain: layout style paint;
+  width: 100%;
+  box-sizing: border-box;
 }
 
-/* Responsive grid columns - maintain large size for detail */
-@media (min-width: 768px) {
+/* Responsive grid columns - adjust for smaller screens */
+@media (max-width: 767px) {
   .image-grid {
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 18px;
+    grid-template-columns: repeat(1, 1fr);
+    gap: 8px;
+    padding: 4px;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1023px) {
+  .image-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+    padding: 4px;
   }
 }
 
 @media (min-width: 1024px) {
   .image-grid {
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: 20px;
-  }
-}
-
-@media (min-width: 1440px) {
-  .image-grid {
-    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-    gap: 22px;
-  }
-}
-
-@media (min-width: 1920px) {
-  .image-grid {
-    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-    gap: 24px;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+    padding: 4px;
   }
 }
 
 .image-item {
   cursor: pointer;
-  border: 2px solid #e5e5e5;
+  border: 1px solid #e5e5e5;
   border-radius: 8px;
   overflow: hidden;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
@@ -2048,9 +2533,10 @@ export default defineComponent({
 
 .preview-image {
   width: 100%;
-  height: auto; /* Auto height to maintain aspect ratio */
-  aspect-ratio: 3/4; /* Standard portrait ratio for fashion images */
-  object-fit: cover; /* Cover to fill the space without distortion */
+  height: auto;
+  max-width: 100%;
+  max-height: 400px;
+  object-fit: contain; /* Contain to show full image without cropping */
   object-position: center;
   display: block;
   background: #f0f0f0;
@@ -3160,6 +3646,196 @@ export default defineComponent({
   justify-content: center;
   background: #1e1e1e;
   color: #fff;
+}
+
+/* Preview Prompt Modal Styles */
+.preview-prompt-content {
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.preview-section {
+  margin-bottom: 20px;
+}
+
+.preview-label {
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: 10px;
+  color: #333;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* XHS-Style Preview */
+.xhs-preview-container {
+  display: flex;
+  justify-content: center;
+  padding: 20px 0;
+}
+
+.xhs-preview-card {
+  width: 100%;
+  max-width: 500px;
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+.xhs-image-gallery {
+  position: relative;
+  width: 100%;
+  padding-top: 100%; /* 1:1 aspect ratio */
+  background: #f5f5f5;
+  overflow: hidden;
+}
+
+.xhs-main-image {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.xhs-main-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.xhs-placeholder-image {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  color: #999;
+  background: linear-gradient(135deg, #f5f5f5 0%, #e0e0e0 100%);
+}
+
+.xhs-image-count {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.xhs-content-section {
+  padding: 16px 20px;
+}
+
+.xhs-prompt-text {
+  font-size: 15px;
+  line-height: 1.8;
+  color: #333;
+  margin-bottom: 12px;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.xhs-hashtags {
+  font-size: 14px;
+  color: #ff2442;
+  font-weight: 500;
+  margin-top: 8px;
+  line-height: 1.6;
+}
+
+.xhs-actions {
+  padding: 12px 20px;
+  border-top: 1px solid #f0f0f0;
+  background: #fafafa;
+}
+
+/* Step 4 Preview Layout */
+.preview-section {
+  margin-bottom: 24px;
+}
+
+.preview-section h3 {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: #333;
+}
+
+.image-grid-preview {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 12px;
+}
+
+.preview-image-item {
+  aspect-ratio: 1;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 2px solid #e0e0e6;
+}
+
+.preview-image-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.preview-more {
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f5f5f5;
+  border-radius: 8px;
+  border: 2px dashed #d0d0d6;
+  font-size: 16px;
+  font-weight: 600;
+  color: #666;
+}
+
+.generated-text-preview {
+  padding: 16px;
+  background: #fafafa;
+  border-radius: 8px;
+  border: 1px solid #e0e0e6;
+  font-size: 14px;
+  line-height: 1.8;
+  color: #333;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.generated-text-editor :deep(textarea) {
+  font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  font-size: 14px;
+  line-height: 1.8;
+  color: #333;
+}
+
+.task-info-preview {
+  padding: 12px 16px;
+  background: #f5f8ff;
+  border-radius: 8px;
+  border-left: 3px solid #18a058;
+  font-size: 13px;
+  line-height: 1.8;
+}
+
+.task-info-preview > div {
+  margin-bottom: 8px;
+}
+
+.task-info-preview > div:last-child {
+  margin-bottom: 0;
 }
 
 </style>

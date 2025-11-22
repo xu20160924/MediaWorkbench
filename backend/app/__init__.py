@@ -1,14 +1,23 @@
 from flask import Flask
 from flask_cors import CORS
 from flask_migrate import Migrate
-from app.api import image, note, prompt, translate, static, health, workflow, user, agent
-from app.scheduler import scheduler
-from app.models.agent import Agent, AgentStatus
+
+from app.api import image, note, prompt, translate, static, health, workflow, user, agent, advertisement_task, image_locations, system_config
 from app.extensions import db
+from app.scheduler import scheduler
+from conf import DATABASE_URI
+from app.models.agent import Agent, AgentStatus
+from app.models.note import Note  # Import Note model so it gets registered
+from app.models.task_rule_card import TaskRuleCard  # Import TaskRuleCard model
+
 
 def create_app():
     app = Flask(__name__)
-    
+    app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URI
+    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+    db.init_app(app)
+
     # Enable CORS for all routes
     CORS(app, resources={
         r"/*": {
@@ -29,8 +38,7 @@ def create_app():
         return response
     
     # Initialize Flask-Migrate
-    migrate = Migrate()
-    migrate.init_app(app, db)
+    Migrate(app, db)
 
     # Register blueprints
     app.register_blueprint(image.bp)
@@ -42,6 +50,9 @@ def create_app():
     app.register_blueprint(workflow.bp)
     app.register_blueprint(user.bp)
     app.register_blueprint(agent.bp)
+    app.register_blueprint(advertisement_task.bp)
+    app.register_blueprint(image_locations.bp)
+    app.register_blueprint(system_config.bp)
 
     # Initialize running agents
     # with app.app_context():

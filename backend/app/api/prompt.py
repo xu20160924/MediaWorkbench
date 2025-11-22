@@ -19,7 +19,8 @@ bp = Blueprint('prompt', __name__, url_prefix='/api')
 LLM_RUNTIME_CONFIG = {
     'enhance_model': OPENAI_ENHANCE_MODEL,
     'caption_model': OPENAI_CAPTION_MODEL,
-    'api_base': OPENAI_API_BASE
+    'api_base': OPENAI_API_BASE,
+    'provider': 'openai',
 }
 
 @bp.route('/prompt/templates', methods=['GET'])
@@ -117,7 +118,8 @@ def get_llm_models():
             'caption_model': LLM_RUNTIME_CONFIG.get('caption_model'),
             'api_base': LLM_RUNTIME_CONFIG.get('api_base'),
             'api_host': LLM_RUNTIME_CONFIG.get('api_host'),
-            'api_port': LLM_RUNTIME_CONFIG.get('api_port')
+            'api_port': LLM_RUNTIME_CONFIG.get('api_port'),
+            'provider': LLM_RUNTIME_CONFIG.get('provider', 'openai'),
         })
     except Exception as e:
         logger.exception('Error getting LLM models')
@@ -129,10 +131,10 @@ def set_llm_models():
         data = request.json or {}
         
         logger.info("=" * 80)
-        logger.info("🔧 UPDATING LLM RUNTIME CONFIG")
+        logger.info(" UPDATING LLM RUNTIME CONFIG")
         logger.info("=" * 80)
-        logger.info(f"📥 Received config update: {json.dumps(data, indent=2, ensure_ascii=False)}")
-        logger.info(f"📋 Current config BEFORE update: {json.dumps(LLM_RUNTIME_CONFIG, indent=2, ensure_ascii=False)}")
+        logger.info(f" Received config update: {json.dumps(data, indent=2, ensure_ascii=False)}")
+        logger.info(f" Current config BEFORE update: {json.dumps(LLM_RUNTIME_CONFIG, indent=2, ensure_ascii=False)}")
         
         if 'enhance_model' in data:
             LLM_RUNTIME_CONFIG['enhance_model'] = data['enhance_model']
@@ -144,6 +146,8 @@ def set_llm_models():
             LLM_RUNTIME_CONFIG['api_host'] = data['api_host']
         if 'api_port' in data:
             LLM_RUNTIME_CONFIG['api_port'] = data['api_port']
+        if 'provider' in data:
+            LLM_RUNTIME_CONFIG['provider'] = data['provider']
         
         # Auto-construct api_base from host and port if both are provided
         if data.get('api_host') and data.get('api_port'):
@@ -188,6 +192,10 @@ def generate_participation_prompt():
         logger.info(f"  - Rule Image IDs: {rule_ids}")
         logger.info(f"  - Model: {model}")
         
+        # Get provider from config first to determine validation
+        provider = LLM_RUNTIME_CONFIG.get('provider', 'openai')
+        logger.info(f" LLM Provider: {provider}")
+        
         # Get API base
         api_base = LLM_RUNTIME_CONFIG.get('api_base')
         logger.info(f" API Base (from config): {api_base}")
@@ -196,8 +204,9 @@ def generate_participation_prompt():
             logger.warning(f'  Invalid or placeholder API base detected: {api_base}, ignoring')
             api_base = None
         
+        # Require valid api_base
         if not api_base:
-            error_msg = 'No valid API base URL configured. Please configure an LLM model in "LLM 模型管理" with a valid API Base (e.g., http://127.0.0.1:11434/v1 for Ollama)'
+            error_msg = 'No valid API base URL configured. Please configure an LLM model in "LLM 模型管理" with a valid API Base (e.g., http://127.0.0.1:11434/v1 for Ollama).'
             logger.error(f" {error_msg}")
             return error_response(error_msg, 400)
 
@@ -237,6 +246,8 @@ def generate_participation_prompt():
 
         # Encode images
         image_base64_list = []
+        image_formats = []  # Track formats for each image
+        
         for img in selected:
             file_path = img.file_path
             full_path = None
@@ -260,8 +271,21 @@ def generate_participation_prompt():
             if os.path.exists(full_path):
                 encoded = encode_image_to_base64(full_path)
                 if encoded:
+                    # Detect image format from filename
+                    ext = os.path.splitext(full_path)[1].lower()
+                    format_map = {
+                        '.jpg': 'jpeg',
+                        '.jpeg': 'jpeg',
+                        '.png': 'png',
+                        '.webp': 'webp',
+                        '.gif': 'gif',
+                        '.bmp': 'bmp'
+                    }
+                    img_format = format_map.get(ext, 'jpeg')  # Default to jpeg if unknown
+                    
                     image_base64_list.append(encoded)
-                    logger.info(f" Encoded: {img.filename} ({len(encoded)} bytes)")
+                    image_formats.append(img_format)
+                    logger.info(f" Encoded: {img.filename} ({len(encoded)} bytes, format: {img_format})")
             else:
                 logger.error(f" Not found: {full_path}")
         
@@ -278,7 +302,8 @@ def generate_participation_prompt():
         
         user_prompt_text = "\n".join(prompt_parts)
 
-        # Prepare payload for Ollama's single-shot generation API (/api/generate)
+        # Use OpenAI-compatible API
+        # Default: Prepare payload for Ollama's single-shot generation API (/api/generate)
         # This endpoint also supports multimodal inputs via the top-level "images" array
         # Reference: https://docs.ollama.com/api/generate
         ollama_base = api_base.replace('/v1', '').rstrip('/')

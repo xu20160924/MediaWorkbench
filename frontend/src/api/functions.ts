@@ -23,11 +23,17 @@ import type {
   User,
   ActiveUser,
   Agent,
-  AgentForm
+  AgentForm,
+  ListNotesParams,
+  ListNotesResponse
 } from './config'
 
 export const publishNote = async (params: PublishNoteParams): Promise<ApiResponse<PublishNoteResponse>> => {
   return request.post<any, ApiResponse<PublishNoteResponse>>('/publish', params)
+}
+
+export const listNotes = async (params?: ListNotesParams): Promise<ApiResponse<ListNotesResponse>> => {
+  return request.get<any, ApiResponse<ListNotesResponse>>('/notes/list', { params })
 }
 
 export const checkHealth = async (): Promise<ApiResponse> => {

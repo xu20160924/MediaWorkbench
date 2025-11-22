@@ -1,4 +1,4 @@
-from flask import Blueprint, request, send_from_directory, jsonify, current_app, make_response
+from flask import Blueprint, request, send_from_directory, send_file, jsonify, current_app, make_response
 from flask_cors import cross_origin
 from werkzeug.utils import secure_filename
 from pathlib import Path
@@ -130,11 +130,12 @@ def mark_image_participation(image_id: int):
 
         image = Image.query.get_or_404(image_id)
         vars_obj = image.variables or {}
-        # 仅允许广告规则类型标记参与
-        try:
-            image_type_value = image.image_type.value if hasattr(image.image_type, 'value') else image.image_type
-        except Exception:
-            image_type_value = image.image_type
+
+        # Check image type - only advertising_rule images use this field
+        image_type_value = vars_obj.get('image_type')
+        # If no variables set, try to get from image.image_type
+        if not image_type_value:
+            image_type_value = image.image_type if image.image_type else None
         if image_type_value != ImageType.advertising_rule.value:
             return error_response('仅广告规则图片可参与', 400)
 
@@ -142,12 +143,74 @@ def mark_image_participation(image_id: int):
         image.variables = vars_obj
         db.session.add(image)
         db.session.commit()
-
-        return success_response(image.to_dict())
+        return success_response({'participated': participated}, message='参与状态已更新')
     except Exception as e:
         logger.error(f'标记参与状态失败: {str(e)}', exc_info=True)
         db.session.rollback()
         return error_response('标记参与状态失败')
+
+@bp.route('/images/<int:image_id>/participated', methods=['PATCH'])
+def mark_image_as_participated(image_id: int):
+    """Mark image as participated (used by advertisement participation flow)"""
+    try:
+        image = Image.query.get_or_404(image_id)
+        
+        # Set participated flag to true in variables JSON
+        variables = image.variables or {}
+        variables['participated'] = True
+        image.variables = variables
+        db.session.commit()
+        
+        logger.info(f"✓ Marked image {image_id} as participated")
+        return success_response({'participated': True}, message='Image marked as participated')
+    except Exception as e:
+        logger.error(f'Failed to mark image as participated: {str(e)}', exc_info=True)
+        db.session.rollback()
+        return error_response('Failed to mark image as participated', 500)
+
+@bp.route('/images/bulk-participated', methods=['POST'])
+def bulk_mark_as_participated():
+    """Bulk mark images as participated by image_type"""
+    try:
+        data = request.get_json() or {}
+        image_type = data.get('image_type', 'advertising_campaign')
+        
+        # Find all images of the specified type
+        images = Image.query.filter_by(image_type=image_type).all()
+        
+        # Filter out already participated images
+        images_to_update = []
+        for image in images:
+            variables = image.variables or {}
+            if not variables.get('participated', False):
+                images_to_update.append(image)
+        
+        count = len(images_to_update)
+        if count == 0:
+            return success_response({
+                'updated_count': 0,
+                'message': f'No unparticipated {image_type} images found'
+            })
+        
+        # Update all images by setting participated in their variables JSON
+        for image in images_to_update:
+            variables = image.variables or {}
+            variables['participated'] = True
+            image.variables = variables
+            # Force SQLAlchemy to detect the change
+            db.session.add(image)
+        
+        db.session.commit()
+        
+        logger.info(f"✓ Bulk marked {count} {image_type} images as participated")
+        return success_response({
+            'updated_count': count,
+            'message': f'Successfully marked {count} images as participated'
+        })
+    except Exception as e:
+        logger.error(f'Failed to bulk mark images as participated: {str(e)}', exc_info=True)
+        db.session.rollback()
+        return error_response(f'Failed to bulk update: {str(e)}', 500)
 
 @bp.route('/images/default-locations', methods=['GET'])
 def list_default_locations():
@@ -500,6 +563,54 @@ def get_image(image_id):
     except Exception as e:
         logger.exception(f"Error while retrieving image {image_id}")
         return error_response('Failed to retrieve image details', 500)
+
+
+@bp.route('/images/<int:image_id>/file', methods=['GET'])
+@cross_origin()
+def serve_image_file(image_id):
+    """Serve image file by image ID"""
+    try:
+        image = Image.query.get(image_id)
+        
+        if not image:
+            return error_response(f'Image not found: {image_id}', 404)
+        
+        file_path = image.file_path
+        
+        # Handle different path types
+        if not os.path.isabs(file_path):
+            # Relative path - check common directories
+            from conf import UPLOAD_FOLDER, OUTPUT_FOLDER
+            
+            if file_path.startswith('upload/') or file_path.startswith('/uploads/'):
+                file_path = os.path.join(UPLOAD_FOLDER, os.path.basename(file_path))
+            elif file_path.startswith('output/') or file_path.startswith('/output/'):
+                file_path = os.path.join(OUTPUT_FOLDER, os.path.basename(file_path))
+        
+        # Check if file exists
+        if not os.path.exists(file_path):
+            logger.error(f'File not found: {file_path} for image ID {image_id}')
+            return error_response(f'Image file not found', 404)
+        
+        # Determine mimetype
+        mimetype = 'image/jpeg'
+        ext = os.path.splitext(file_path)[1].lower()
+        if ext == '.png':
+            mimetype = 'image/png'
+        elif ext == '.gif':
+            mimetype = 'image/gif'
+        elif ext == '.webp':
+            mimetype = 'image/webp'
+        elif ext == '.bmp':
+            mimetype = 'image/bmp'
+        
+        logger.info(f'Serving image file: {file_path} (ID: {image_id})')
+        return send_file(file_path, mimetype=mimetype)
+        
+    except Exception as e:
+        logger.exception(f'Error serving image file for ID {image_id}')
+        return error_response(f'Failed to serve image file: {str(e)}', 500)
+
 
 @bp.route('/images/uploads/<path:filename>')
 @cross_origin()

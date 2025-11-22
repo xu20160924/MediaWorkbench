@@ -1,5 +1,7 @@
 import os
 from pathlib import Path
+from urllib.parse import quote_plus
+
 from dotenv import load_dotenv
 
 # 加载环境变量
@@ -28,6 +30,7 @@ OPENAI_API_BASE = os.getenv('OPENAI_API_BASE')
 OPENAI_ENHANCE_MODEL = os.getenv('OPENAI_ENHANCE_MODEL', 'gpt-4o')
 OPENAI_CAPTION_MODEL = os.getenv('OPENAI_CAPTION_MODEL', 'gpt-4o')
 
+
 # 腾讯翻译配置
 TENCENT_SECRET_ID = os.getenv('TENCENT_SECRET_ID')
 TENCENT_SECRET_KEY = os.getenv('TENCENT_SECRET_KEY')
@@ -39,8 +42,32 @@ TENCENT_REGION = os.getenv('TENCENT_REGION', 'ap-beijing')
 # 小红书 cookie 配置
 XHS_COOKIE = os.getenv('XHS_COOKIE')
 
-# SQLite database configuration
-DATABASE_URI = os.getenv('DATABASE_URI', 'sqlite:///instance/app.db')
+# Database configuration (defaults to SQLite, supports MySQL)
+DB_ENGINE = os.getenv('DB_ENGINE', 'sqlite').lower()
+DATABASE_URI = os.getenv('DATABASE_URI')
+
+if not DATABASE_URI:
+    if DB_ENGINE == 'mysql':
+        db_user = os.getenv('DB_USER', 'root')
+        db_password = os.getenv('DB_PASSWORD', '')
+        db_host = os.getenv('DB_HOST', '127.0.0.1')
+        db_port = os.getenv('DB_PORT', '3306')
+        db_name = os.getenv('DB_NAME', 'media_workbench')
+        db_options = os.getenv('DB_OPTIONS', 'charset=utf8mb4')
+
+        auth_part = quote_plus(db_password) if db_password else ''
+        if auth_part:
+            auth_part = f":{auth_part}"
+
+        DATABASE_URI = (
+            f"mysql+pymysql://{db_user}{auth_part}@{db_host}:{db_port}/{db_name}"
+        )
+        if db_options:
+            DATABASE_URI = f"{DATABASE_URI}?{db_options}"
+    else:
+        sqlite_filename = os.getenv('SQLITE_DB_FILENAME', 'app.db')
+        sqlite_path = os.path.join(BASE_PATH, 'instance', sqlite_filename)
+        DATABASE_URI = f"sqlite:///{sqlite_path}"
 
 # pinterest 爬虫配置，用于训练模型
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
