@@ -237,14 +237,17 @@ def set_default_location():
         try:
             image_type_enum = ImageType(image_type)
         except ValueError:
-            image_type_enum = ImageType.general
+            logger.error(f'Invalid image_type: {image_type}. Valid types: {[t.value for t in ImageType]}')
+            return error_response(f'Invalid image_type: {image_type}. Valid types: {[t.value for t in ImageType]}')
 
         existing = ImageDefaultLocation.query.filter_by(image_type=image_type_enum.value).first()
         if existing:
             existing.directory = directory
+            logger.info(f'Updated default location for {image_type_enum.value}: {directory}')
         else:
             existing = ImageDefaultLocation(image_type=image_type_enum.value, directory=directory)
             db.session.add(existing)
+            logger.info(f'Created default location for {image_type_enum.value}: {directory}')
         db.session.commit()
 
         # After commit, the 'existing' object is persistent and can be converted to dict
@@ -555,14 +558,46 @@ def list_images():
         logger.error(f'获取图片列表失败: {str(e)}\n{tb_str}')
         return error_response(f'获取图片列表失败: {str(e)}', 500)
 
-@bp.route('/images/<int:image_id>', methods=['GET'])
-def get_image(image_id):
+@bp.route('/images/<int:image_id>', methods=['GET', 'PATCH'])
+@cross_origin()
+def get_or_update_image(image_id):
+    """Get image details or update image properties"""
     try:
         image = Image.query.get_or_404(image_id)
+        
+        if request.method == 'GET':
+            return success_response(image.to_dict())
+        
+        # PATCH - update image properties
+        data = request.get_json() or {}
+        
+        # Update 'used' status (stored in variables)
+        if 'used' in data:
+            if image.variables is None:
+                image.variables = {}
+            image.variables = {**image.variables, 'used': data['used']}
+        
+        # Update 'participated' status (stored in variables)
+        if 'participated' in data:
+            if image.variables is None:
+                image.variables = {}
+            image.variables = {**image.variables, 'participated': data['participated']}
+        
+        # Update image_type if provided
+        if 'image_type' in data:
+            try:
+                image.image_type = ImageType(data['image_type'])
+            except ValueError:
+                pass
+        
+        db.session.commit()
+        logger.info(f'Updated image {image_id}: {data}')
         return success_response(image.to_dict())
+        
     except Exception as e:
-        logger.exception(f"Error while retrieving image {image_id}")
-        return error_response('Failed to retrieve image details', 500)
+        logger.exception(f"Error while handling image {image_id}")
+        db.session.rollback()
+        return error_response(f'Failed to handle image: {str(e)}', 500)
 
 
 @bp.route('/images/<int:image_id>/file', methods=['GET'])
@@ -575,26 +610,51 @@ def serve_image_file(image_id):
         if not image:
             return error_response(f'Image not found: {image_id}', 404)
         
-        file_path = image.file_path
+        # Try multiple path sources in order of preference
+        possible_paths = []
         
-        # Handle different path types
-        if not os.path.isabs(file_path):
-            # Relative path - check common directories
-            from conf import UPLOAD_FOLDER, OUTPUT_FOLDER
+        # 1. Try local_path first (usually the most accurate for local_dir source)
+        if image.local_path:
+            possible_paths.append(image.local_path)
+        
+        # 2. Try file_path
+        if image.file_path:
+            file_path = image.file_path
             
-            if file_path.startswith('upload/') or file_path.startswith('/uploads/'):
-                file_path = os.path.join(UPLOAD_FOLDER, os.path.basename(file_path))
-            elif file_path.startswith('output/') or file_path.startswith('/output/'):
-                file_path = os.path.join(OUTPUT_FOLDER, os.path.basename(file_path))
+            # If it's an absolute path, use it directly
+            if os.path.isabs(file_path):
+                possible_paths.append(file_path)
+            else:
+                # Relative path - try common directories
+                from conf import UPLOAD_FOLDER, OUTPUT_FOLDER, BASE_PATH
+                
+                # Try as-is first
+                possible_paths.append(file_path)
+                
+                # Try with base path
+                possible_paths.append(os.path.join(str(BASE_PATH), file_path))
+                
+                # Try upload folder
+                filename = os.path.basename(file_path)
+                possible_paths.append(os.path.join(UPLOAD_FOLDER, filename))
+                
+                # Try output folder
+                possible_paths.append(os.path.join(OUTPUT_FOLDER, filename))
         
-        # Check if file exists
-        if not os.path.exists(file_path):
-            logger.error(f'File not found: {file_path} for image ID {image_id}')
+        # Find the first path that exists
+        actual_path = None
+        for path in possible_paths:
+            if path and os.path.isfile(path):
+                actual_path = path
+                break
+        
+        if not actual_path:
+            logger.error(f'File not found for image ID {image_id}. Tried paths: {possible_paths}')
             return error_response(f'Image file not found', 404)
         
         # Determine mimetype
         mimetype = 'image/jpeg'
-        ext = os.path.splitext(file_path)[1].lower()
+        ext = os.path.splitext(actual_path)[1].lower()
         if ext == '.png':
             mimetype = 'image/png'
         elif ext == '.gif':
@@ -604,8 +664,8 @@ def serve_image_file(image_id):
         elif ext == '.bmp':
             mimetype = 'image/bmp'
         
-        logger.info(f'Serving image file: {file_path} (ID: {image_id})')
-        return send_file(file_path, mimetype=mimetype)
+        logger.info(f'Serving image file: {actual_path} (ID: {image_id})')
+        return send_file(actual_path, mimetype=mimetype)
         
     except Exception as e:
         logger.exception(f'Error serving image file for ID {image_id}')
@@ -862,3 +922,83 @@ def reclassify_images():
         logger.error(f'类型纠正失败: {str(e)}', exc_info=True)
         db.session.rollback()
         return error_response('类型纠正失败')
+
+
+@bp.route('/images/cleanup-orphans', methods=['POST'])
+def cleanup_orphan_images():
+    """清理数据库中指向不存在文件的脏图片记录"""
+    try:
+        data = request.get_json() or {}
+        dry_run = data.get('dry_run', False)  # If true, only report without deleting
+        image_type = data.get('image_type')   # Optional: filter by image type
+        
+        query = Image.query
+        
+        # Filter by image type if provided
+        if image_type:
+            try:
+                image_type_enum = ImageType(image_type)
+                query = query.filter(Image.image_type == image_type_enum)
+            except ValueError:
+                pass
+        
+        all_images = query.all()
+        orphan_ids = []
+        orphan_details = []
+        
+        for img in all_images:
+            file_exists = False
+            checked_path = None
+            
+            # Check local_path first (for local_dir source)
+            if img.local_path:
+                checked_path = img.local_path
+                file_exists = os.path.isfile(img.local_path)
+            
+            # If not found and has file_path, check file_path
+            if not file_exists and img.file_path:
+                # Try different possible locations
+                possible_paths = [
+                    img.file_path,
+                    os.path.join(UPLOAD_FOLDER, img.file_path),
+                    os.path.join(OUTPUT_FOLDER, img.file_path),
+                    os.path.join(BASE_PATH, img.file_path) if BASE_PATH else None,
+                ]
+                for path in possible_paths:
+                    if path and os.path.isfile(path):
+                        file_exists = True
+                        checked_path = path
+                        break
+                if not file_exists:
+                    checked_path = img.file_path
+            
+            if not file_exists:
+                orphan_ids.append(img.id)
+                orphan_details.append({
+                    'id': img.id,
+                    'filename': img.filename,
+                    'file_path': img.file_path,
+                    'local_path': img.local_path,
+                    'image_type': img.image_type.value if hasattr(img.image_type, 'value') else img.image_type,
+                    'source': img.source.value if hasattr(img.source, 'value') else img.source,
+                    'checked_path': checked_path
+                })
+        
+        deleted_count = 0
+        if not dry_run and orphan_ids:
+            # Delete orphan records
+            deleted_count = Image.query.filter(Image.id.in_(orphan_ids)).delete(synchronize_session=False)
+            db.session.commit()
+            logger.info(f'Cleaned up {deleted_count} orphan image records')
+        
+        return success_response({
+            'message': f'找到 {len(orphan_ids)} 条脏数据' + (f'，已删除 {deleted_count} 条' if not dry_run else ' (dry run模式，未删除)'),
+            'orphan_count': len(orphan_ids),
+            'deleted_count': deleted_count,
+            'dry_run': dry_run,
+            'orphans': orphan_details[:100]  # Limit to first 100 for response size
+        })
+    except Exception as e:
+        logger.error(f'清理脏数据失败: {str(e)}', exc_info=True)
+        db.session.rollback()
+        return error_response(f'清理脏数据失败: {str(e)}')

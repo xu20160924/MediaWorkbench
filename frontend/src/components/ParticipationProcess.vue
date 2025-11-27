@@ -127,7 +127,7 @@
             v-for="image in advertisementImages"
             :key="image.id"
             class="image-item"
-            :class="{ selected: selectedAdvertisementImagesSet.has(image.id) }"
+            :class="{ selected: isAdImageSelected(image.id) }"
             @click="toggleAdvertisementImage(image.id)"
           >
             <img 
@@ -656,7 +656,8 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, reactive, onMounted, onActivated, watch, computed } from 'vue';
+import { defineComponent, ref, reactive, onMounted, onActivated, watch, computed, nextTick } from 'vue';
+import { useRouter } from 'vue-router';
 import { ArrowBack, ArrowForward, Add, CloudUploadOutline as UploadCloud, Sparkles, Copy, ClipboardOutline, ImageOutline, CheckmarkCircle, CloseCircle, CloseOutline, EyeOutline, ResizeOutline, SyncOutline, RemoveOutline, AddOutline, ExpandOutline } from '@vicons/ionicons5';
 import { NModal, NCard, NButton, NIcon, NTag, NUpload, NForm, NFormItem, NInput, NSelect, NAlert, NDivider, NDynamicTags, NButtonGroup } from 'naive-ui';
 import { useMessage } from 'naive-ui';
@@ -669,6 +670,7 @@ interface ImageItem {
   source: string;
   image_type: string;
   participated: boolean;
+  used?: boolean;
   created_at: string;
   variables?: Record<string, any>;
   tags?: string[];
@@ -691,6 +693,10 @@ export default defineComponent({
       default: null,
     },
     advertisementTaskId: {
+      type: [Number, String],
+      default: null,
+    },
+    ruleCardId: {
       type: [Number, String],
       default: null,
     },
@@ -730,11 +736,22 @@ export default defineComponent({
   },
   setup(props) {
     const message = useMessage();
+    const router = useRouter();
     const step = ref(1);
     // Use Set for O(1) lookups instead of Array O(n)
     const selectedRegularImagesSet = ref(new Set<number>());
     const selectedAdvertisementImagesSet = ref(new Set<number>());
     const selectedRuleImagesSet = ref(new Set<number>());
+    
+    // Trigger for forcing reactivity updates on Set changes
+    const selectionVersion = ref(0);
+    
+    // Helper function to check if an advertisement image is selected (reactive)
+    const isAdImageSelected = (imageId: number): boolean => {
+      // Access selectionVersion to create reactivity dependency
+      void selectionVersion.value;
+      return selectedAdvertisementImagesSet.value.has(imageId);
+    };
     const unusedRegularImages = ref<ImageItem[]>([]);
     const advertisementImages = ref<ImageItem[]>([]);
     const showAddAdvertisementModal = ref(false);
@@ -750,6 +767,7 @@ export default defineComponent({
     
     // Advertisement task support
     const advertisementTask = ref<any>(null);
+    const selectedRuleCard = ref<any>(null);  // Selected rule card with its own tags
     const loadingTask = ref(false);
     
     // Clipboard pasting enhancement
@@ -1044,6 +1062,26 @@ export default defineComponent({
       }
     };
 
+    const loadRuleCard = async () => {
+      if (!props.ruleCardId) return;
+      
+      try {
+        console.log('[LoadRuleCard] Loading rule card:', props.ruleCardId);
+        const response = await fetch(`http://localhost:5001/api/advertisement-tasks/rule-card/${props.ruleCardId}`);
+        const data = await response.json();
+        
+        if (data.success) {
+          selectedRuleCard.value = data.data;
+          console.log('[LoadRuleCard] Rule card loaded:', selectedRuleCard.value);
+          console.log('[LoadRuleCard] Rule card tag_require:', selectedRuleCard.value.tag_require);
+        } else {
+          console.error('[LoadRuleCard] Failed to load rule card:', data.message);
+        }
+      } catch (error) {
+        console.error('[LoadRuleCard] Error loading rule card:', error);
+      }
+    };
+
     const loadImages = async () => {
       try {
         console.log('[LoadImages] ========== STARTING FRESH LOAD ==========');
@@ -1105,19 +1143,19 @@ export default defineComponent({
           participated: img.participated
         })));
 
-        // Filter regular images (exclude participated ones)
+        // Filter regular images (exclude participated and used ones)
         unusedRegularImages.value = allImages.filter((img: ImageItem) => 
-          img.image_type === 'general' && !img.participated
+          img.image_type === 'general' && !img.participated && !img.used
         );
         
         console.log(`[LoadImages] Filtered regular images: ${unusedRegularImages.value.length}`);
 
-        // Filter advertisement images (exclude participated ones)
+        // Filter advertisement images (exclude participated and used ones)
         const oldAdCount = advertisementImages.value.length;
         const oldIds = advertisementImages.value.map(img => img.id);
         
         const newAdImages = allImages.filter((img: ImageItem) => 
-          img.image_type === 'advertising_campaign' && !img.participated
+          img.image_type === 'advertising_campaign' && !img.participated && !img.used
         );
         
         // Force Vue reactivity by creating new array reference
@@ -1198,17 +1236,22 @@ export default defineComponent({
       console.log('[UPLOAD FINISH] Upload response:', options);
       
       // Extract image ID from response and auto-select
+      let uploadedImageId: number | null = null;
       try {
         const response = options.event?.target?.response;
         if (response) {
           const result = typeof response === 'string' ? JSON.parse(response) : response;
           if (result.success && result.data && result.data.id) {
-            const imageId = result.data.id;
-            selectedAdvertisementImagesSet.value.add(imageId);
-            // Trigger reactivity
-            selectedAdvertisementImagesSet.value = new Set(selectedAdvertisementImagesSet.value);
-            console.log(`[UPLOAD FINISH] Auto-selected uploaded image ID: ${imageId}`);
-            message.success(`图片上传成功并已选中`);
+            uploadedImageId = typeof result.data.id === 'string' ? parseInt(result.data.id, 10) : result.data.id;
+            if (uploadedImageId && !isNaN(uploadedImageId)) {
+              selectedAdvertisementImagesSet.value.add(uploadedImageId);
+              // Trigger reactivity
+              selectedAdvertisementImagesSet.value = new Set(selectedAdvertisementImagesSet.value);
+              console.log(`[UPLOAD FINISH] Auto-selected uploaded image ID: ${uploadedImageId}`);
+              message.success(`图片上传成功并已选中`);
+            } else {
+              message.success('图片上传成功');
+            }
           } else {
             message.success('图片上传成功');
           }
@@ -1222,13 +1265,63 @@ export default defineComponent({
       
       // Fire-and-forget async reload
       (async () => {
+        // Capture existing image IDs BEFORE reload
+        const existingImageIds = new Set(advertisementImages.value.map(img => img.id));
+        console.log('[UPLOAD FINISH] Existing image IDs before reload:', Array.from(existingImageIds));
+        
+        // Also capture current selections (ensure all are numbers)
+        const currentSelections = new Set<number>();
+        selectedAdvertisementImagesSet.value.forEach(id => {
+          const numId = typeof id === 'string' ? parseInt(id as any, 10) : id;
+          if (!isNaN(numId)) currentSelections.add(numId);
+        });
+        // Also capture the newly uploaded image ID
+        if (uploadedImageId && !isNaN(uploadedImageId)) {
+          currentSelections.add(uploadedImageId);
+        }
+        
         console.log('[UPLOAD FINISH] Waiting 2 seconds for backend to save...');
+        console.log('[UPLOAD FINISH] Selections to preserve:', Array.from(currentSelections));
         await new Promise(resolve => setTimeout(resolve, 2000));
         
         console.log('[UPLOAD FINISH] Now calling loadImages()...');
         await loadImages();
         
+        // Wait for Vue to update
+        await nextTick();
+        
+        // Find ALL newly added images (images that didn't exist before the upload)
+        const newImageIds = advertisementImages.value
+          .filter(img => !existingImageIds.has(img.id))
+          .map(img => img.id);
+        
+        console.log('[UPLOAD FINISH] Newly added image IDs:', newImageIds);
+        
+        // Create new selection with all existing selections + all new images
+        const newSelection = new Set<number>(currentSelections);
+        
+        // Add all newly uploaded images to selection
+        newImageIds.forEach(id => {
+          newSelection.add(id);
+          console.log(`[UPLOAD FINISH] Auto-selecting new image ID: ${id}`);
+        });
+        
+        // Log what we're selecting
+        console.log('[UPLOAD FINISH] Preserving selections:', Array.from(currentSelections));
+        
+        // Replace the Set to trigger reactivity
+        selectedAdvertisementImagesSet.value = newSelection;
+        
+        // Increment version to force template re-render
+        selectionVersion.value++;
+        
+        // Wait for Vue to render
+        await nextTick();
+        
         console.log('[UPLOAD FINISH] After loadImages(), advertisement count:', advertisementImages.value.length);
+        console.log('[UPLOAD FINISH] Advertisement IDs:', advertisementImages.value.map(img => img.id));
+        console.log('[UPLOAD FINISH] Final selected IDs:', Array.from(selectedAdvertisementImagesSet.value));
+        console.log('[UPLOAD FINISH] Selection version:', selectionVersion.value);
         console.log('[UPLOAD FINISH] ============ COMPLETE ============');
       })();
     };
@@ -1416,6 +1509,8 @@ export default defineComponent({
             // Auto-select the uploaded image in advertisement images
             if (result.data && result.data.id) {
               selectedAdvertisementImagesSet.value.add(result.data.id);
+              // Trigger reactivity
+              selectedAdvertisementImagesSet.value = new Set(selectedAdvertisementImagesSet.value);
               console.log(`[Upload] Auto-selected image ID: ${result.data.id}`);
             }
             
@@ -1433,10 +1528,20 @@ export default defineComponent({
         
         const successfulUploads = results.filter(r => r.success).length;
         const failedUploads = results.filter(r => !r.success).length;
+        
+        // Collect all successfully uploaded image IDs for auto-selection
+        const uploadedImageIds: number[] = results
+          .filter(r => r.success && r.result?.data?.id)
+          .map(r => r.result.data.id);
 
         // Reload images FIRST to show newly uploaded ones
         if (successfulUploads > 0) {
           console.log('[Upload] Starting grid refresh...');
+          console.log('[Upload] Uploaded image IDs to auto-select:', uploadedImageIds);
+          
+          // Capture existing image IDs BEFORE reload
+          const existingImageIds = new Set(advertisementImages.value.map(img => img.id));
+          console.log('[Upload] Existing image IDs before reload:', Array.from(existingImageIds));
           
           // Wait longer for backend to save images
           await new Promise(resolve => setTimeout(resolve, 1500));
@@ -1450,7 +1555,7 @@ export default defineComponent({
             console.log('[Upload] Advertisement images count:', advertisementImages.value.length);
             
             // If we got new images, stop trying
-            if (advertisementImages.value.length >= 2 + successfulUploads) {
+            if (advertisementImages.value.length > existingImageIds.size) {
               console.log('[Upload] ✅ Grid refreshed successfully!');
               break;
             }
@@ -1462,8 +1567,45 @@ export default defineComponent({
             }
           }
           
-          // Force Vue reactivity
-          advertisementImages.value = [...advertisementImages.value];
+          // Wait for Vue to update the DOM
+          await nextTick();
+          
+          // Find ALL newly added images (images that didn't exist before the upload)
+          const newImageIds = advertisementImages.value
+            .filter(img => !existingImageIds.has(img.id))
+            .map(img => img.id);
+          
+          console.log('[Upload] Newly added image IDs:', newImageIds);
+          
+          // Create new selection with all existing selections + all new images
+          const newSelection = new Set<number>(selectedAdvertisementImagesSet.value);
+          
+          // Add all newly uploaded images to selection
+          newImageIds.forEach(id => {
+            newSelection.add(id);
+            console.log(`[Upload] Auto-selecting new image ID: ${id}`);
+          });
+          
+          // Also add IDs from upload response (in case they're different)
+          uploadedImageIds.forEach(id => {
+            const numId = typeof id === 'string' ? parseInt(id, 10) : id;
+            if (!isNaN(numId)) {
+              newSelection.add(numId);
+            }
+          });
+          
+          // Replace the entire Set to trigger reactivity
+          selectedAdvertisementImagesSet.value = newSelection;
+          
+          // Increment version to force template re-render
+          selectionVersion.value++;
+          
+          console.log('[Upload] Final selected IDs:', Array.from(selectedAdvertisementImagesSet.value));
+          console.log('[Upload] Advertisement image IDs:', advertisementImages.value.map(img => img.id));
+          console.log('[Upload] Selection version:', selectionVersion.value);
+          
+          // Force another nextTick to ensure selection is rendered
+          await nextTick();
         }
 
         // Show results with detailed feedback AFTER grid updates
@@ -1658,7 +1800,10 @@ export default defineComponent({
         return;
       }
       
-      // Prepare preview data
+      // Prepare preview data - use rule card data when available
+      const ruleCardTagRequire = selectedRuleCard.value?.tag_require || '';
+      const taskHashtags = (advertisementTask.value?.hashtags || []).map((tag: string) => tag.startsWith('#') ? tag : `#${tag}`).join(' ');
+      
       previewPromptData.value = {
         regular_images: Array.from(selectedRegularImagesSet.value).length,
         event_images: Array.from(selectedAdvertisementImagesSet.value).length,
@@ -1666,10 +1811,10 @@ export default defineComponent({
         custom_prompt: formData.customPrompt,
         model: formData.llmModel,
         task_info: advertisementTask.value ? {
-          task_title: advertisementTask.value.task_title,
-          hashtags: (advertisementTask.value.hashtags || []).map((tag: string) => tag.startsWith('#') ? tag : `#${tag}`).join(' '),
-          tag_require: advertisementTask.value.tag_require,
-          submission_rules: advertisementTask.value.submission_rules
+          task_title: selectedRuleCard.value?.rule_name || advertisementTask.value.task_title,
+          hashtags: ruleCardTagRequire || taskHashtags,
+          tag_require: ruleCardTagRequire || advertisementTask.value.tag_require,
+          submission_rules: selectedRuleCard.value?.submission_rules || advertisementTask.value.submission_rules
         } : null
       };
       
@@ -1741,15 +1886,28 @@ export default defineComponent({
         };
         
         // If advertisement task is loaded, include its context
+        // Use rule card data when available (priority over task data)
         if (advertisementTask.value) {
           console.log('[Generate] Including advertisement task context');
+          
+          // Parse rule card's tag_require into array for hashtags
+          let ruleCardHashtags: string[] = [];
+          if (selectedRuleCard.value && selectedRuleCard.value.tag_require) {
+            const tagMatches = selectedRuleCard.value.tag_require.match(/#[^\s#]+/g);
+            if (tagMatches) {
+              ruleCardHashtags = tagMatches;
+            }
+          }
+          
           requestPayload.advertisement_task = {
             task_id: advertisementTask.value.id,
-            task_title: advertisementTask.value.task_title,
-            hashtags: advertisementTask.value.hashtags || [],
-            tag_require: advertisementTask.value.tag_require || '',
-            submission_rules: advertisementTask.value.submission_rules || ''
+            task_title: selectedRuleCard.value?.rule_name || advertisementTask.value.task_title,
+            hashtags: ruleCardHashtags.length > 0 ? ruleCardHashtags : (advertisementTask.value.hashtags || []),
+            tag_require: selectedRuleCard.value?.tag_require || advertisementTask.value.tag_require || '',
+            submission_rules: selectedRuleCard.value?.submission_rules || advertisementTask.value.submission_rules || ''
           };
+          
+          console.log('[Generate] Using context:', requestPayload.advertisement_task);
         }
         
         const response = await fetch('/api/prompt/participation', {
@@ -1765,20 +1923,33 @@ export default defineComponent({
           let finalPrompt = result.data.prompt;
           
           // Automatically append required tags/hashtags to LLM-generated result
-          if (advertisementTask.value && advertisementTask.value.hashtags && advertisementTask.value.hashtags.length > 0) {
-            const hashtags = advertisementTask.value.hashtags
+          // Priority: rule card's tag_require > task's hashtags
+          let hashtags = '';
+          if (selectedRuleCard.value && selectedRuleCard.value.tag_require) {
+            // Use rule card's tag_require (it's already a string with hashtags)
+            hashtags = selectedRuleCard.value.tag_require;
+            console.log('[Generate] Using rule card tags:', hashtags);
+          } else if (advertisementTask.value && advertisementTask.value.hashtags && advertisementTask.value.hashtags.length > 0) {
+            // Fall back to task's hashtags
+            hashtags = advertisementTask.value.hashtags
               .map((tag: string) => tag.startsWith('#') ? tag : `#${tag}`)
               .join(' ');
-            // Check if hashtags are not already in the generated content
-            if (!finalPrompt.includes(hashtags)) {
-              finalPrompt = finalPrompt.trim() + '\n\n' + hashtags;
-              if (isDev) console.log('[Generate] Appended required tags to generated prompt:', hashtags);
-            }
+            console.log('[Generate] Using task hashtags:', hashtags);
+          }
+          
+          // Check if hashtags are not already in the generated content
+          if (hashtags && !finalPrompt.includes(hashtags)) {
+            finalPrompt = finalPrompt.trim() + '\n\n' + hashtags;
+            if (isDev) console.log('[Generate] Appended required tags to generated prompt:', hashtags);
           }
           
           generatedPrompt.value = finalPrompt;
           
           // Prepare preview data for Step 4
+          // Use rule card data when available
+          const ruleCardTagRequire = selectedRuleCard.value?.tag_require || '';
+          const taskHashtags = (advertisementTask.value?.hashtags || []).map((tag: string) => tag.startsWith('#') ? tag : `#${tag}`).join(' ');
+          
           previewPromptData.value = {
             regular_images: Array.from(selectedRegularImagesSet.value).length,
             event_images: Array.from(selectedAdvertisementImagesSet.value).length,
@@ -1787,10 +1958,10 @@ export default defineComponent({
             model: formData.llmModel,
             generated_text: finalPrompt,
             task_info: advertisementTask.value ? {
-              task_title: advertisementTask.value.task_title,
-              hashtags: (advertisementTask.value.hashtags || []).map((tag: string) => tag.startsWith('#') ? tag : `#${tag}`).join(' '),
-              tag_require: advertisementTask.value.tag_require,
-              submission_rules: advertisementTask.value.submission_rules
+              task_title: selectedRuleCard.value?.rule_name || advertisementTask.value.task_title,
+              hashtags: ruleCardTagRequire || taskHashtags,
+              tag_require: ruleCardTagRequire || advertisementTask.value.tag_require,
+              submission_rules: selectedRuleCard.value?.submission_rules || advertisementTask.value.submission_rules
             } : null
           };
           
@@ -1858,15 +2029,28 @@ export default defineComponent({
         
         // Extract title from first line or use task title
         const lines = generatedPrompt.value.trim().split('\n');
-        const title = advertisementTask.value?.task_title || lines[0].replace(/^[#标题：]+/, '').trim() || '小红书笔记';
+        const title = selectedRuleCard.value?.rule_name || advertisementTask.value?.task_title || lines[0].replace(/^[#标题：]+/, '').trim() || '小红书笔记';
         
-        // Get hashtags from task or extract from content
-        let topics = advertisementTask.value?.hashtags || [];
+        // Get hashtags - priority: rule card's tag_require > task's hashtags > content extraction
+        let topics: string[] = [];
+        if (selectedRuleCard.value && selectedRuleCard.value.tag_require) {
+          // Parse rule card's tag_require string into array
+          const tagMatches = selectedRuleCard.value.tag_require.match(/#[^\s#]+/g);
+          if (tagMatches) {
+            topics = tagMatches;
+          }
+          console.log('[Publish] Using rule card topics:', topics);
+        } else if (advertisementTask.value?.hashtags && advertisementTask.value.hashtags.length > 0) {
+          topics = advertisementTask.value.hashtags;
+          console.log('[Publish] Using task hashtags:', topics);
+        }
+        
         if (topics.length === 0) {
-          // Extract hashtags from content
+          // Extract hashtags from content as fallback
           const hashtagMatches = generatedPrompt.value.match(/#[^\s#]+/g);
           if (hashtagMatches) {
             topics = hashtagMatches;
+            console.log('[Publish] Extracted topics from content:', topics);
           }
         }
         
@@ -1880,9 +2064,13 @@ export default defineComponent({
           topics: topics,
           is_private: false,
           userId: parseInt(userId),
-          task_id: advertisementTask.value?.id  // Include task ID for marking as participated
+          task_id: advertisementTask.value?.id,  // Include task ID for marking as participated
+          rule_card_id: props.ruleCardId ? parseInt(String(props.ruleCardId)) : null  // Include rule card ID
         };
         
+        console.log('[Publish] Props ruleCardId:', props.ruleCardId);
+        console.log('[Publish] Task ID:', advertisementTask.value?.id);
+        console.log('[Publish] Rule Card ID being sent:', postData.rule_card_id);
         if (isDev) console.log('[Publish] Publishing to XHS:', postData);
         
         const response = await fetch('/api/publish', {
@@ -1912,14 +2100,22 @@ export default defineComponent({
             console.warn('[Publish] Failed to mark images as participated:', e);
           }
           
-          // Reset to step 1 after successful posting
+          // Navigate back to advertisement tasks after successful posting
+          // This ensures the updated rule card status is shown
+          message.info('即将返回任务列表...');
           setTimeout(() => {
-            step.value = 1;
-            generatedPrompt.value = '';
-            selectedRegularImagesSet.value.clear();
-            selectedAdvertisementImagesSet.value.clear();
-            selectedRuleImagesSet.value.clear();
-            loadImages();
+            if (props.advertisementTaskId) {
+              // Navigate back to advertisement tasks page
+              router.push('/advertisement-tasks');
+            } else {
+              // Reset to step 1 if not from advertisement task
+              step.value = 1;
+              generatedPrompt.value = '';
+              selectedRegularImagesSet.value.clear();
+              selectedAdvertisementImagesSet.value.clear();
+              selectedRuleImagesSet.value.clear();
+              loadImages();
+            }
           }, 1500);
         } else {
           message.error(result.message || '发布失败，请重试');
@@ -2210,6 +2406,7 @@ export default defineComponent({
     // Initialize lazy loading for images
     onMounted(async () => {
       console.log('[MOUNTED] Component mounted, loading images...');
+      console.log('[MOUNTED] Props - advertisementTaskId:', props.advertisementTaskId, 'ruleCardId:', props.ruleCardId);
       
       // If advertisementTaskId prop is provided, load task data as context
       if (props.advertisementTaskId) {
@@ -2217,6 +2414,12 @@ export default defineComponent({
         await loadAdvertisementTask();
         // Do NOT skip steps - let user go through normal flow
         // Task data will be available when they reach step 3
+      }
+      
+      // If ruleCardId prop is provided, load the specific rule card data
+      if (props.ruleCardId) {
+        console.log('[MOUNTED] Loading rule card:', props.ruleCardId);
+        await loadRuleCard();
       }
       
       // Always load images for normal participation flow
@@ -2268,6 +2471,7 @@ export default defineComponent({
       selectedRuleImageIds,
       unusedRegularImages,
       advertisementImages,
+      isAdImageSelected,
       showAddAdvertisementModal,
       showGeneratedPromptModal,
       showPreviewPromptModal,

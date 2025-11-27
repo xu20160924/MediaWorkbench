@@ -56,6 +56,7 @@
       :data="tasks"
       :loading="loading"
       :pagination="pagination"
+      :row-key="(row: AdvertisementTask) => row.id"
       @update:page="handlePageChange"
     />
 
@@ -162,8 +163,8 @@
         <n-descriptions-item label="任务标题">{{ viewingTask.task_title }}</n-descriptions-item>
         <n-descriptions-item label="卡片标题">{{ viewingTask.card_title }}</n-descriptions-item>
         <n-descriptions-item label="任务类型">
-          <n-tag :type="viewingTask.task_type === 'community_special' ? 'warning' : 'default'">
-            {{ viewingTask.task_type === 'community_special' ? '社群特别任务' : '普通任务' }}
+          <n-tag :type="viewingTask.task_type === 'community' || viewingTask.task_type === 'community_special' ? 'warning' : 'default'">
+            {{ viewingTask.task_type === 'community' || viewingTask.task_type === 'community_special' ? '社群任务' : '普通任务' }}
           </n-tag>
         </n-descriptions-item>
         <n-descriptions-item label="广告图片">
@@ -224,13 +225,133 @@
           </div>
         </n-descriptions-item>
         <n-descriptions-item label="结算方式">
-          <div style="white-space: pre-wrap">{{ viewingTask.settlement_way }}</div>
+          <div style="white-space: pre-wrap">{{ viewingTask.settlement_way || '-' }}</div>
         </n-descriptions-item>
-        <n-descriptions-item label="奖金池金额">¥{{ viewingTask.ads_pool_amount }}</n-descriptions-item>
+        <n-descriptions-item label="奖金池">
+          <n-text type="success" strong style="font-size: 18px;">¥{{ viewingTask.ads_pool_amount }}</n-text>
+        </n-descriptions-item>
         <n-descriptions-item label="状态">
           <n-tag :type="getStatusType(viewingTask.status)">
             {{ getStatusLabel(viewingTask.status) }}
           </n-tag>
+        </n-descriptions-item>
+        <n-descriptions-item label="参与状态">
+          <n-space>
+            <n-tag :type="viewingTask.participated ? 'success' : 'default'">
+              {{ viewingTask.participated ? '已参与' : '未参与' }}
+            </n-tag>
+            <span v-if="viewingTask.participation_count">参与次数: {{ viewingTask.participation_count }}</span>
+          </n-space>
+        </n-descriptions-item>
+        <n-descriptions-item label="规则卡片">
+          <div v-if="viewingTask.rule_cards && viewingTask.rule_cards.length > 0">
+            <div style="margin-bottom: 12px; padding: 8px; background: #f0f7ff; border-radius: 4px;">
+              <n-text depth="3">共 {{ viewingTask.rule_cards_count }} 个规则，{{ viewingTask.available_rule_cards_count }} 个可用</n-text>
+            </div>
+            <n-space vertical size="large">
+              <n-card
+                v-for="card in viewingTask.rule_cards"
+                :key="card.id"
+                size="small"
+                :bordered="true"
+                style="box-shadow: 0 1px 3px rgba(0,0,0,0.1);"
+              >
+                <div style="display: flex; gap: 16px;">
+                  <!-- Left: Image -->
+                  <div v-if="card.image" style="flex-shrink: 0;">
+                    <n-image
+                      :src="card.image.external ? card.image.url : `http://localhost:5001${card.image.url}`"
+                      width="140"
+                      height="140"
+                      object-fit="cover"
+                      preview
+                      style="border-radius: 4px;"
+                      fallback-src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Crect fill='%23f5f5f5' width='140' height='140'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%23999' font-size='12'%3E暂无截图%3C/text%3E%3C/svg%3E"
+                    />
+                  </div>
+                  <div v-else style="flex-shrink: 0; width: 140px; height: 140px; background: #f5f5f5; border-radius: 4px; display: flex; align-items: center; justify-content: center; color: #999; font-size: 12px;">
+                    暂无截图
+                  </div>
+                  
+                  <!-- Middle: Content -->
+                  <div style="flex: 1; display: flex; flex-direction: column; gap: 12px;">
+                    <!-- Title and status row -->
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                      <n-text strong style="font-size: 16px;">{{ card.rule_name || `规则卡片 ${card.display_order + 1}` }}</n-text>
+                      <n-space size="8">
+                        <n-tag :type="card.participated ? 'success' : 'default'" size="small" round>
+                          {{ card.participated ? '✓ 已参与' : '○ 未参与' }}
+                        </n-tag>
+                        <n-tag v-if="card.participation_count > 0" type="info" size="small" round>
+                          {{ card.participation_count }}次
+                        </n-tag>
+                      </n-space>
+                    </div>
+                    
+                    <!-- Description if exists -->
+                    <div v-if="card.rule_description" style="padding: 8px; background: #f5f5f5; border-radius: 4px;">
+                      <n-text depth="3" style="font-size: 13px;">{{ card.rule_description }}</n-text>
+                    </div>
+                    
+                    <!-- Structured fields as separate cards -->
+                    <n-space vertical size="medium">
+                      <n-card v-if="card.submission_rules" size="small" style="background: #f0f9ff; border-left: 3px solid #3b82f6;">
+                        <template #header>
+                          <n-text strong style="font-size: 13px; color: #3b82f6;">📝 投稿规则</n-text>
+                        </template>
+                        <n-text style="font-size: 13px; white-space: pre-wrap; line-height: 1.6;">{{ card.submission_rules }}</n-text>
+                      </n-card>
+                      
+                      <n-card v-if="card.tag_require" size="small" style="background: #f0fdf4; border-left: 3px solid #10b981;">
+                        <template #header>
+                          <n-text strong style="font-size: 13px; color: #10b981;">🏷️ 话题要求</n-text>
+                        </template>
+                        <n-text style="font-size: 13px; white-space: pre-wrap; line-height: 1.6;">{{ card.tag_require }}</n-text>
+                      </n-card>
+                      
+                      <n-card v-if="card.settlement_way" size="small" style="background: #fffbeb; border-left: 3px solid #f59e0b;">
+                        <template #header>
+                          <n-text strong style="font-size: 13px; color: #f59e0b;">💰 结算方式</n-text>
+                        </template>
+                        <n-text style="font-size: 13px; white-space: pre-wrap; line-height: 1.6;">{{ card.settlement_way }}</n-text>
+                      </n-card>
+                    </n-space>
+                    
+                    <!-- Timestamp info -->
+                    <div v-if="card.last_participated_at" style="margin-top: 4px;">
+                      <n-text depth="3" style="font-size: 12px; color: #999;">
+                        最后参与: {{ formatDate(card.last_participated_at) }}
+                      </n-text>
+                    </div>
+                  </div>
+                  
+                  <!-- Right: Action buttons -->
+                  <div style="flex-shrink: 0; display: flex; align-items: center; gap: 8px;">
+                    <n-button
+                      v-if="!card.participated"
+                      type="warning"
+                      size="small"
+                      secondary
+                      @click="markRuleCardParticipated(card.id)"
+                      style="min-width: 90px;"
+                    >
+                      标记已参与
+                    </n-button>
+                    <n-button
+                      :type="card.participated ? 'default' : 'success'"
+                      size="small"
+                      :disabled="card.participated"
+                      @click="selectRuleCard(card, viewingTask)"
+                      style="min-width: 80px;"
+                    >
+                      {{ card.participated ? '✓ 已参与' : '参与' }}
+                    </n-button>
+                  </div>
+                </div>
+              </n-card>
+            </n-space>
+          </div>
+          <n-text v-else depth="3" style="font-style: italic;">暂无规则卡片</n-text>
         </n-descriptions-item>
         <n-descriptions-item label="创建时间">{{ formatDate(viewingTask.created_at) }}</n-descriptions-item>
         <n-descriptions-item label="更新时间">{{ formatDate(viewingTask.updated_at) }}</n-descriptions-item>
@@ -335,12 +456,39 @@ import {
   NStatistic,
   NDescriptions,
   NDescriptionsItem,
+  NText,
+  NImage,
+  NEmpty,
+  NSwitch,
   useMessage,
   useDialog,
   DataTableColumns
 } from 'naive-ui'
 import { Add, Refresh } from '@vicons/ionicons5'
 import axios from 'axios'
+
+interface RuleCard {
+  id: number
+  task_id: number
+  rule_name?: string
+  rule_description?: string
+  submission_rules?: string
+  tag_require?: string
+  settlement_way?: string
+  image_path?: string
+  image_url?: string
+  image?: {
+    path?: string
+    url: string
+    external?: boolean
+  }
+  display_order: number
+  participated: boolean
+  participation_count: number
+  last_participated_at?: string
+  created_at?: string
+  updated_at?: string
+}
 
 interface AdvertisementTask {
   id: number
@@ -368,6 +516,9 @@ interface AdvertisementTask {
   updated_at: string
   deadline?: string
   extra_data?: any
+  rule_cards?: RuleCard[]
+  rule_cards_count?: number
+  available_rule_cards_count?: number
 }
 
 export default defineComponent({
@@ -390,6 +541,10 @@ export default defineComponent({
     NStatistic,
     NDescriptions,
     NDescriptionsItem,
+    NText,
+    NImage,
+    NEmpty,
+    NSwitch,
     Add,
     Refresh
   },
@@ -485,17 +640,167 @@ export default defineComponent({
     }
     
     const columns: DataTableColumns<AdvertisementTask> = [
+      {
+        type: 'expand',
+        expandable: (row) => {
+          return !!(row.rule_cards && row.rule_cards.length > 0)
+        },
+        renderExpand: (row) => {
+          if (!row.rule_cards || row.rule_cards.length === 0) {
+            return h('div', { class: 'rule-cards-expand', style: 'padding: 16px;' }, [
+              h(NEmpty, { description: '暂无规则卡片', size: 'small' })
+            ])
+          }
+          
+          return h('div', { class: 'rule-cards-expand', style: 'padding: 16px; background: #fafafa;' }, [
+            h(NSpace, { vertical: true, size: 'large' }, {
+              default: () => (row.rule_cards || []).map((card: RuleCard) => 
+                h(NCard, { 
+                  size: 'small', 
+                  bordered: true,
+                  style: 'background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.1);'
+                }, {
+                  default: () => h('div', { style: 'display: flex; gap: 16px;' }, [
+                    // Left: Image
+                    card.image ? h('div', { style: 'flex-shrink: 0;' }, [
+                      h(NImage, {
+                        src: card.image.external ? card.image.url : `http://localhost:5001${card.image.url}`,
+                        width: 120,
+                        height: 120,
+                        objectFit: 'cover',
+                        preview: true,
+                        fallbackSrc: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Crect fill='%23f5f5f5' width='120' height='120'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%23999' font-size='12'%3E暂无截图%3C/text%3E%3C/svg%3E",
+                        style: 'border-radius: 4px;'
+                      })
+                    ]) : h('div', { 
+                      style: 'flex-shrink: 0; width: 120px; height: 120px; background: #f5f5f5; border-radius: 4px; display: flex; align-items: center; justify-content: center; color: #999; font-size: 12px;' 
+                    }, '暂无截图'),
+                    // Middle: Content
+                    h('div', { style: 'flex: 1; display: flex; flex-direction: column; gap: 12px;' }, [
+                      // Title and status row
+                      h('div', { style: 'display: flex; justify-content: space-between; align-items: center;' }, [
+                        h(NText, { strong: true, style: 'font-size: 15px;' }, { 
+                          default: () => card.rule_name || `规则卡片 ${card.display_order + 1}` 
+                        }),
+                        h(NSpace, { size: 8 }, {
+                          default: () => [
+                            h(NTag, { 
+                              type: card.participated ? 'success' : 'default', 
+                              size: 'small',
+                              round: true
+                            }, {
+                              default: () => card.participated ? '✓ 已参与' : '○ 未参与'
+                            }),
+                            card.participation_count > 0 ? h(NTag, { 
+                              type: 'info', 
+                              size: 'small',
+                              round: true
+                            }, {
+                              default: () => `${card.participation_count}次`
+                            }) : null
+                          ].filter(Boolean)
+                        })
+                      ]),
+                      // Description if exists
+                      card.rule_description ? h('div', { style: 'padding: 8px; background: #f5f5f5; border-radius: 4px;' }, [
+                        h(NText, { depth: 3, style: 'font-size: 13px;' }, { default: () => card.rule_description })
+                      ]) : null,
+                      // Structured fields as separate cards
+                      h(NSpace, { vertical: true, size: 'medium' }, {
+                        default: () => [
+                          card.submission_rules ? h(NCard, { 
+                            size: 'small',
+                            style: 'background: #f0f9ff; border-left: 3px solid #3b82f6;'
+                          }, {
+                            header: () => h(NText, { strong: true, style: 'font-size: 13px; color: #3b82f6;' }, { default: () => '📝 投稿规则' }),
+                            default: () => h(NText, { style: 'font-size: 13px; white-space: pre-wrap; line-height: 1.6;' }, { default: () => card.submission_rules })
+                          }) : null,
+                          card.tag_require ? h(NCard, { 
+                            size: 'small',
+                            style: 'background: #f0fdf4; border-left: 3px solid #10b981;'
+                          }, {
+                            header: () => h(NText, { strong: true, style: 'font-size: 13px; color: #10b981;' }, { default: () => '🏷️ 话题要求' }),
+                            default: () => h(NText, { style: 'font-size: 13px; white-space: pre-wrap; line-height: 1.6;' }, { default: () => card.tag_require })
+                          }) : null,
+                          card.settlement_way ? h(NCard, { 
+                            size: 'small',
+                            style: 'background: #fffbeb; border-left: 3px solid #f59e0b;'
+                          }, {
+                            header: () => h(NText, { strong: true, style: 'font-size: 13px; color: #f59e0b;' }, { default: () => '💰 结算方式' }),
+                            default: () => h(NText, { style: 'font-size: 13px; white-space: pre-wrap; line-height: 1.6;' }, { default: () => card.settlement_way })
+                          }) : null
+                        ].filter(Boolean)
+                      })
+                    ]),
+                    // Right: Action buttons
+                    h('div', { style: 'flex-shrink: 0; display: flex; align-items: center; gap: 8px;' }, [
+                      // Mark as participated button (only for unparticipated)
+                      !card.participated ? h(NButton, {
+                        type: 'warning',
+                        size: 'small',
+                        secondary: true,
+                        onClick: () => markRuleCardParticipated(card.id),
+                        style: 'min-width: 90px;'
+                      }, {
+                        default: () => '标记已参与'
+                      }) : null,
+                      // Normal participate button
+                      h(NButton, {
+                        type: card.participated ? 'default' : 'success',
+                        size: 'small',
+                        disabled: card.participated,
+                        onClick: () => selectRuleCard(card, row),
+                        style: 'min-width: 80px;'
+                      }, {
+                        default: () => card.participated ? '✓ 已参与' : '参与'
+                      })
+                    ].filter(Boolean))
+                  ].filter(Boolean))
+                })
+              )
+            })
+          ])
+        }
+      },
       { title: '任务ID', key: 'task_id', width: 100, ellipsis: { tooltip: true } },
-      { title: '任务标题', key: 'task_title', minWidth: 300, ellipsis: { tooltip: true } },
+      { title: '任务标题', key: 'task_title', minWidth: 200, ellipsis: { tooltip: true } },
       {
         title: '类型',
         key: 'task_type',
         width: 70,
-        render: (row) => h(
-          NTag,
-          { type: row.task_type === 'community_special' ? 'warning' : 'default', size: 'small' },
-          { default: () => row.task_type === 'community_special' ? '社群' : '普通' }
-        )
+        render: (row) => {
+          const isCommunity = row.task_type === 'community' || row.task_type === 'community_special'
+          return h(
+            NTag,
+            { type: isCommunity ? 'warning' : 'default', size: 'small' },
+            { default: () => isCommunity ? '社群' : '普通' }
+          )
+        }
+      },
+      {
+        title: '规则卡片',
+        key: 'rule_cards_count',
+        width: 100,
+        render: (row) => {
+          if (!row.rule_cards_count) return '-'
+          return h(
+            NSpace,
+            { size: 4 },
+            {
+              default: () => [
+                h(NText, {}, { default: () => `${row.available_rule_cards_count || 0}/${row.rule_cards_count}` }),
+                h(
+                  NTag,
+                  { 
+                    type: (row.available_rule_cards_count || 0) > 0 ? 'success' : 'default',
+                    size: 'small'
+                  },
+                  { default: () => '可用' }
+                )
+              ]
+            }
+          )
+        }
       },
       {
         title: '奖金池',
@@ -541,19 +846,10 @@ export default defineComponent({
                 NButton,
                 {
                   size: 'small',
-                  type: row.participated ? 'default' : 'success',
-                  onClick: () => openParticipateModal(row)
-                },
-                { default: () => row.participated ? '再次参与' : '参与' }
-              ),
-              h(
-                NButton,
-                {
-                  size: 'small',
                   type: 'primary',
                   onClick: () => editTask(row)
                 },
-                { default: () => '编辑' }
+                { default: () => '编辑任务' }
               ),
               h(
                 NButton,
@@ -634,6 +930,47 @@ export default defineComponent({
       showCreateModal.value = true
     }
     
+    const selectedRuleCard = ref<RuleCard | null>(null)
+    
+    const markRuleCardParticipated = async (ruleCardId: number) => {
+      try {
+        const response = await axios.patch(
+          `http://localhost:5001/api/advertisement-tasks/rule-card/${ruleCardId}/participated`
+        )
+        if (response.data.success) {
+          message.success('已标记为已参与')
+          
+          // Update the rule card in viewingTask if modal is open
+          if (viewingTask.value && viewingTask.value.rule_cards) {
+            const cardIndex = viewingTask.value.rule_cards.findIndex((c: RuleCard) => c.id === ruleCardId)
+            if (cardIndex !== -1) {
+              viewingTask.value.rule_cards[cardIndex] = response.data.data
+            }
+          }
+          
+          loadTasks()
+          loadStats()
+        } else {
+          message.error(response.data.message || '标记失败')
+        }
+      } catch (error) {
+        message.error('标记失败: ' + (error as Error).message)
+      }
+    }
+    
+    const selectRuleCard = (card: RuleCard, task: AdvertisementTask) => {
+      if (card.participated) {
+        message.warning('该规则卡片已被使用过')
+        return
+      }
+      selectedRuleCard.value = card
+      message.info(`已选择: ${card.rule_name || '规则卡片'}`, {
+        duration: 2000
+      })
+      // Open participate modal with this task and pre-selected rule card
+      openParticipateModal(task)
+    }
+    
     const deleteTask = (task: AdvertisementTask) => {
       dialog.warning({
         title: '确认删除',
@@ -659,10 +996,21 @@ export default defineComponent({
     
     const openParticipateModal = (task: AdvertisementTask) => {
       // Navigate to participation page instead of opening modal
-      router.push({
+      const routeData: any = {
         name: 'advertisement-task-participation',
         params: { id: task.id }
-      })
+      }
+      
+      // If a rule card was selected, pass it as query parameter
+      if (selectedRuleCard.value) {
+        routeData.query = {
+          rule_card_id: selectedRuleCard.value.id,
+          rule_card_name: selectedRuleCard.value.rule_name || '规则卡片'
+        }
+        message.info(`将使用规则卡片: ${selectedRuleCard.value.rule_name || '规则卡片'}`)
+      }
+      
+      router.push(routeData)
     }
     
     const handleParticipate = async () => {
@@ -774,6 +1122,7 @@ export default defineComponent({
       document.removeEventListener('visibilitychange', handleVisibilityChange)
     })
     
+    
     return {
       tasks,
       loading,
@@ -802,6 +1151,9 @@ export default defineComponent({
       viewTask,
       editTask,
       deleteTask,
+      markRuleCardParticipated,
+      selectRuleCard,
+      selectedRuleCard,
       openParticipateModal,
       handleParticipate,
       closeParticipateModal,
@@ -857,5 +1209,31 @@ export default defineComponent({
 
 .filter-section {
   margin-bottom: 16px;
+}
+
+/* Rule Cards Styling */
+.rule-cards-expand {
+  padding: 16px 24px;
+  background: #fafafa;
+}
+
+.rule-card-item {
+  background: white;
+  transition: all 0.3s ease;
+}
+
+.rule-card-item:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  transform: translateY(-2px);
+}
+
+.rule-card-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.empty-state {
+  padding: 24px;
+  text-align: center;
 }
 </style>

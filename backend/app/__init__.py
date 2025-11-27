@@ -2,13 +2,14 @@ from flask import Flask
 from flask_cors import CORS
 from flask_migrate import Migrate
 
-from app.api import image, note, prompt, translate, static, health, workflow, user, agent, advertisement_task, image_locations, system_config
+from app.api import image, note, prompt, translate, static, health, workflow, user, agent, advertisement_task, image_locations, system_config, filesystem, crawler
 from app.extensions import db
 from app.scheduler import scheduler
 from conf import DATABASE_URI
 from app.models.agent import Agent, AgentStatus
 from app.models.note import Note  # Import Note model so it gets registered
 from app.models.task_rule_card import TaskRuleCard  # Import TaskRuleCard model
+from app.models.image import ImageDefaultLocation  # Import ImageDefaultLocation model so it gets registered
 
 
 def create_app():
@@ -34,7 +35,7 @@ def create_app():
     def after_request(response):
         response.headers.add('Access-Control-Allow-Origin', '*')
         response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
-        response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+        response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,PATCH,OPTIONS')
         return response
     
     # Initialize Flask-Migrate
@@ -53,6 +54,8 @@ def create_app():
     app.register_blueprint(advertisement_task.bp)
     app.register_blueprint(image_locations.bp)
     app.register_blueprint(system_config.bp)
+    app.register_blueprint(filesystem.bp)
+    app.register_blueprint(crawler.bp)
 
     # Initialize running agents
     # with app.app_context():

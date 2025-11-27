@@ -24,27 +24,37 @@
           <n-form-item label="配置名称">
             <n-input v-model:value="configName" placeholder="例如：本地 GPT-4" />
           </n-form-item>
+          <n-form-item label="提供商">
+            <n-select v-model:value="provider" :options="providerOptions" />
+          </n-form-item>
           <n-form-item label="LLM 模型">
             <n-input 
               v-model:value="llmModel" 
-              placeholder="输入模型名称，例如：llama3.2, gpt-4o, qwen2.5"
+              :placeholder="provider === 'doubao' ? '例如：pro_32k, lite_32k, pro_256k' : '输入模型名称，例如：llama3.2, gpt-4o, qwen2.5'"
             />
+            <template #feedback v-if="provider === 'doubao'">
+              <span style="color: #999; font-size: 12px;">Doubao 可用模型: pro_32k (推荐), lite_32k, pro_256k</span>
+            </template>
           </n-form-item>
-          <n-form-item label="API Base">
+          <n-form-item v-if="provider !== 'doubao'" label="API Base">
             <n-input v-model:value="apiBase" placeholder="例如：http://localhost:8000 或 http://192.168.1.100:8000" />
             <template #feedback>
               <span style="color: #999; font-size: 12px;">填写完整 URL，或者使用下方 IP + 端口</span>
             </template>
           </n-form-item>
-          <n-form-item label="API 主机 IP">
+          <n-form-item v-if="provider !== 'doubao'" label="API 主机 IP">
             <n-input v-model:value="apiHost" placeholder="例如：localhost 或 192.168.1.100" />
           </n-form-item>
-          <n-form-item label="API 端口">
+          <n-form-item v-if="provider !== 'doubao'" label="API 端口">
             <n-input v-model:value="apiPort" placeholder="例如：8000" />
             <template #feedback>
               <span style="color: #999; font-size: 12px;">IP 和 端口需同时填写</span>
             </template>
           </n-form-item>
+          <n-alert v-if="provider === 'doubao'" type="info" style="margin-bottom: 16px;" :show-icon="true">
+            <template #header>Doubao 配置说明</template>
+            Doubao API 密钥在后端 .env 文件中配置，无需填写 API Base。请确保已配置 DOUBAO_API_KEY。
+          </n-alert>
           <div class="actions">
             <n-button v-if="!isEditing" type="primary" @click="addConfig">添加配置</n-button>
             <n-space v-else>
@@ -68,9 +78,14 @@
             <n-thing :title="config.name || config.model">
               <template #description>
                 <n-space vertical size="small">
-                  <div><n-tag size="small" type="info">{{ config.model }}</n-tag></div>
+                  <div>
+                    <n-tag size="small" type="info">{{ config.model }}</n-tag>
+                    <n-tag v-if="config.provider === 'doubao'" size="small" type="success" style="margin-left: 8px;">Doubao</n-tag>
+                    <n-tag v-else size="small" type="default" style="margin-left: 8px;">{{ config.provider || 'OpenAI' }}</n-tag>
+                  </div>
                   <div v-if="config.apiBase"><n-text depth="3" style="font-size: 12px;">API: {{ config.apiBase }}</n-text></div>
                   <div v-if="config.apiHost && config.apiPort"><n-text depth="3" style="font-size: 12px;">连接: {{ config.apiHost }}:{{ config.apiPort }}</n-text></div>
+                  <div v-if="config.provider === 'doubao'"><n-text depth="3" style="font-size: 12px;">使用后端环境配置</n-text></div>
                 </n-space>
               </template>
               <template #action>
@@ -97,7 +112,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { NForm, NFormItem, NInput, NButton, NCard, NList, NListItem, NThing, NSpace, NEmpty, NTag, NText, NIcon, NAlert, useMessage, useDialog } from 'naive-ui'
+import { NForm, NFormItem, NInput, NSelect, NButton, NCard, NList, NListItem, NThing, NSpace, NEmpty, NTag, NText, NIcon, NAlert, useMessage, useDialog } from 'naive-ui'
 import api from '@/api'
 
 const message = useMessage()
@@ -106,16 +121,24 @@ const dialog = useDialog()
 // Form fields
 const configName = ref('')
 const llmModel = ref('')
+const provider = ref('openai')  // 'openai', 'doubao', or 'ollama'
 const apiBase = ref('')
 const apiHost = ref('127.0.0.1')
 const apiPort = ref('')
 const isEditing = ref(false)
 const editingIndex = ref(-1)
 
+// Provider options
+const providerOptions = [
+  { label: 'OpenAI / Ollama', value: 'openai' },
+  { label: 'Doubao (豆包)', value: 'doubao' }
+]
+
 // Saved configurations
 const savedConfigs = ref<Array<{
   name: string
   model: string
+  provider?: string
   apiBase: string
   apiHost: string
   apiPort: string
@@ -151,6 +174,7 @@ const editConfig = (index: number) => {
   const config = savedConfigs.value[index]
   configName.value = config.name
   llmModel.value = config.model
+  provider.value = config.provider || 'openai'
   apiBase.value = config.apiBase
   apiHost.value = config.apiHost
   apiPort.value = config.apiPort
@@ -163,6 +187,7 @@ const editConfig = (index: number) => {
 const cancelEdit = () => {
   configName.value = ''
   llmModel.value = ''
+  provider.value = 'openai'
   apiBase.value = ''
   apiHost.value = '127.0.0.1'
   apiPort.value = ''
@@ -176,7 +201,8 @@ const saveEdit = () => {
   const hasApiBase = !!apiBase.value.trim()
   const hasIpAndPort = !!apiHost.value.trim() && !!apiPort.value.trim()
   
-  if (!hasApiBase && !hasIpAndPort) {
+  // Skip API validation for Doubao
+  if (provider.value !== 'doubao' && !hasApiBase && !hasIpAndPort) {
     message.error('请填写 API Base 或者同时填写 API 主机 IP 和 端口')
     return
   }
@@ -195,6 +221,7 @@ const saveEdit = () => {
   savedConfigs.value[editingIndex.value] = {
     name: configName.value,
     model: llmModel.value,
+    provider: provider.value,
     apiBase: apiBase.value,
     apiHost: apiHost.value,
     apiPort: apiPort.value
@@ -216,7 +243,8 @@ const addConfig = () => {
   const hasApiBase = !!apiBase.value.trim()
   const hasIpAndPort = !!apiHost.value.trim() && !!apiPort.value.trim()
   
-  if (!hasApiBase && !hasIpAndPort) {
+  // Skip API validation for Doubao
+  if (provider.value !== 'doubao' && !hasApiBase && !hasIpAndPort) {
     message.error('请填写 API Base 或者同时填写 API 主机 IP 和 端口')
     return
   }
@@ -235,6 +263,7 @@ const addConfig = () => {
   savedConfigs.value.push({
     name: configName.value,
     model: llmModel.value,
+    provider: provider.value,
     apiBase: apiBase.value,
     apiHost: apiHost.value,
     apiPort: apiPort.value
@@ -245,6 +274,7 @@ const addConfig = () => {
   // Clear form
   configName.value = ''
   llmModel.value = ''
+  provider.value = 'openai'
   apiBase.value = ''
   apiHost.value = ''
   apiPort.value = ''
@@ -308,9 +338,13 @@ const syncActiveConfigToBackend = async () => {
   const payload: any = {
     enhance_model: config.model,
     caption_model: config.model,
+    provider: config.provider || 'openai',
   }
   
-  if (config.apiBase && config.apiBase.trim()) {
+  // For Doubao, no need for API Base (uses env config)
+  if (config.provider === 'doubao') {
+    console.log('[LLM Sync] Using Doubao provider, no API base needed')
+  } else if (config.apiBase && config.apiBase.trim()) {
     payload.api_base = config.apiBase.trim()
     console.log('[LLM Sync] Using apiBase directly:', payload.api_base)
   } else if (config.apiHost && config.apiPort) {

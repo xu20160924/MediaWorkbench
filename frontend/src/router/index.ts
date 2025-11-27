@@ -10,6 +10,7 @@ import ParticipationProcessComponent from '@/components/ParticipationProcess.vue
 import PromptTemplates from '@/views/PromptTemplates.vue'
 import LLMModels from '@/views/LLMModels.vue'
 import AdvertisementTasks from '@/views/AdvertisementTasks.vue'
+import CrawlerManagement from '@/views/CrawlerManagement.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -74,8 +75,14 @@ const router = createRouter({
       name: 'advertisement-task-participation',
       component: ParticipationProcessComponent,
       props: route => ({ 
-        advertisementTaskId: route.params.id 
+        advertisementTaskId: route.params.id,
+        ruleCardId: route.query.rule_card_id || null
       })
+    },
+    {
+      path: '/crawler',
+      name: 'crawler',
+      component: CrawlerManagement
     }
   ]
 })

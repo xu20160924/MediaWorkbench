@@ -11,6 +11,7 @@ class ImageType(Enum):
     general = 'general'
     advertising = 'advertising_campaign'
     advertising_rule = 'advertising_rule'
+    rule_card_screenshot = 'rule_card_screenshot'
 
     # Allow case-insensitive mapping from database values
     @classmethod
@@ -49,6 +50,18 @@ class Image(db.Model):
                               foreign_keys=[workflow_id])
 
     def to_dict(self):
+        import os
+        
+        # Calculate file size from actual file
+        size = 0
+        for path in [self.local_path, self.file_path]:
+            if path and os.path.isfile(path):
+                try:
+                    size = os.path.getsize(path)
+                    break
+                except:
+                    pass
+        
         return {
             'id': self.id,
             'filename': self.filename,
@@ -60,7 +73,9 @@ class Image(db.Model):
             'source': self.source.value if hasattr(self.source, 'value') else self.source,
             'image_type': self.image_type.value if hasattr(self.image_type, 'value') else self.image_type,
             'local_path': self.local_path,
-            'participated': (self.variables or {}).get('participated', False)
+            'participated': (self.variables or {}).get('participated', False),
+            'used': (self.variables or {}).get('used', False),
+            'size': size
         }
 
 # 默认目录配置，用于为不同图片类型设置本地扫描目录

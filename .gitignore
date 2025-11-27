@@ -171,12 +171,15 @@ cython_debug/
 .pypirc
 /backend/output/images
 /backend/README.md
-/backend/spider/images
+/backend/spider/
+/backend/doc
+/doc
 /backend/upload/images
 /backend/upload/workflows
 /frontend/public/image
 /frontend/.vscode
 /frontend/README.md
+/frontend/doc/
 
 # Logs
 /logs/

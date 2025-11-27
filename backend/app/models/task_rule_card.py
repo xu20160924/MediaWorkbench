@@ -13,7 +13,12 @@ class TaskRuleCard(db.Model):
     
     # Rule card information
     rule_name = db.Column(db.String(200))  # Optional name for the rule (e.g., "规则卡片1", "活动要求A")
-    rule_description = db.Column(db.Text)  # Optional description
+    rule_description = db.Column(db.Text)  # Optional general description
+    
+    # Structured rule fields (same as AdvertisementTask)
+    submission_rules = db.Column(db.Text)  # 投稿规则/创作方向
+    tag_require = db.Column(db.Text)  # 话题要求
+    settlement_way = db.Column(db.Text)  # 结算方式
     
     # Image handling - stores relative path from advertising_rule default location
     image_path = db.Column(db.String(500))  # Relative path from default location
@@ -32,7 +37,7 @@ class TaskRuleCard(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # Relationship back to task
-    task = db.relationship('AdvertisementTask', backref=db.backref('rule_cards', lazy=True, cascade='all, delete-orphan'))
+    task = db.relationship('AdvertisementTask', back_populates='rule_cards')
     
     def to_dict(self):
         """Convert model to dictionary"""
@@ -55,6 +60,9 @@ class TaskRuleCard(db.Model):
             'task_id': self.task_id,
             'rule_name': self.rule_name,
             'rule_description': self.rule_description,
+            'submission_rules': self.submission_rules,
+            'tag_require': self.tag_require,
+            'settlement_way': self.settlement_way,
             'image_path': self.image_path,
             'image_url': self.image_url,
             'image': image_data,

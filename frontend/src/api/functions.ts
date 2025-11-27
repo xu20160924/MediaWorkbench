@@ -185,6 +185,7 @@ export async function createUser(data: {
   username: string
   nickname?: string
   cookie: string
+  session_id?: string
 }) {
   return request.post('/user/create', data)
 }
@@ -193,6 +194,7 @@ export async function updateUser(userId: number, data: {
   username?: string
   nickname?: string
   cookie?: string
+  session_id?: string
   status?: boolean
 }) {
   return request.put(`/user/update/${userId}`, data)

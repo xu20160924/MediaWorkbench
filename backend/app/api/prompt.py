@@ -32,6 +32,52 @@ def list_prompt_templates():
         logger.exception("Error listing prompt templates")
         return error_response('Failed to list prompt templates', 500)
 
+@bp.route('/prompt/ollama-status', methods=['GET'])
+def check_ollama_status():
+    """Check Ollama service status and available models"""
+    import requests as req
+    
+    api_base = LLM_RUNTIME_CONFIG.get('api_base', '')
+    ollama_base = api_base.replace('/v1', '').rstrip('/') if api_base else 'http://127.0.0.1:11434'
+    
+    result = {
+        'configured_api_base': api_base,
+        'ollama_base': ollama_base,
+        'ollama_reachable': False,
+        'models': [],
+        'configured_model': LLM_RUNTIME_CONFIG.get('enhance_model', OPENAI_ENHANCE_MODEL),
+        'error': None
+    }
+    
+    try:
+        # Check if Ollama is running
+        tags_url = f"{ollama_base}/api/tags"
+        response = req.get(tags_url, timeout=5)
+        
+        if response.ok:
+            result['ollama_reachable'] = True
+            models_data = response.json().get('models', [])
+            result['models'] = [m.get('name', '') for m in models_data]
+            
+            # Check if configured model exists
+            configured_model = result['configured_model']
+            model_base = configured_model.split(':')[0] if ':' in configured_model else configured_model
+            result['model_available'] = any(model_base in m for m in result['models'])
+            
+            if not result['model_available']:
+                result['error'] = f"Model '{configured_model}' not found. Run: ollama pull {configured_model}"
+        else:
+            result['error'] = f"Ollama returned HTTP {response.status_code}"
+            
+    except req.exceptions.ConnectionError:
+        result['error'] = f"Cannot connect to Ollama at {ollama_base}. Run: ollama serve"
+    except req.exceptions.Timeout:
+        result['error'] = "Ollama connection timed out"
+    except Exception as e:
+        result['error'] = str(e)
+    
+    return success_response(result)
+
 @bp.route('/enhance-prompt', methods=['POST'])
 def enhance_prompt():
     try:
@@ -351,8 +397,49 @@ def generate_participation_prompt():
             json.dumps(request_snapshot, ensure_ascii=False),
         )
         
+        # First, check if Ollama is accessible and the model exists
+        try:
+            ollama_tags_url = f"{ollama_base}/api/tags"
+            tags_response = requests.get(ollama_tags_url, timeout=5)
+            if tags_response.ok:
+                available_models = [m.get('name', '') for m in tags_response.json().get('models', [])]
+                logger.info(f" Available Ollama models: {available_models}")
+                
+                # Check if our model is available (handle model:tag format)
+                model_base = model.split(':')[0] if ':' in model else model
+                model_found = any(model_base in m for m in available_models)
+                if not model_found:
+                    error_msg = f"Model '{model}' not found in Ollama. Available models: {available_models}. Please run: ollama pull {model}"
+                    logger.error(f" {error_msg}")
+                    return error_response(error_msg, 400)
+            else:
+                logger.warning(f" Could not check Ollama models: {tags_response.status_code}")
+        except requests.exceptions.RequestException as e:
+            logger.warning(f" Could not connect to Ollama for model check: {e}")
+        
         response = requests.post(ollama_url, json=payload_data, timeout=120)
-        response.raise_for_status()
+        
+        # Better error handling for non-200 responses
+        if not response.ok:
+            error_detail = ""
+            try:
+                error_json = response.json()
+                error_detail = error_json.get('error', str(error_json))
+            except:
+                error_detail = response.text[:500] if response.text else f"HTTP {response.status_code}"
+            
+            logger.error(f" Ollama returned {response.status_code}: {error_detail}")
+            
+            # Provide helpful error messages
+            if response.status_code == 502:
+                error_msg = f"Ollama 502 Bad Gateway. This usually means: 1) Model '{model}' is not pulled (run: ollama pull {model}), 2) Model is still loading, or 3) Out of memory. Details: {error_detail}"
+            elif response.status_code == 404:
+                error_msg = f"Model '{model}' not found. Run: ollama pull {model}"
+            else:
+                error_msg = f"Ollama error {response.status_code}: {error_detail}"
+            
+            return error_response(error_msg, response.status_code)
+        
         result = response.json()
         
         logger.info(" RECEIVED RESPONSE FROM OLLAMA /api/generate")
@@ -364,7 +451,14 @@ def generate_participation_prompt():
             raise ValueError("No content in Ollama response")
         
         return success_response({"prompt": content})
+    except requests.exceptions.ConnectionError as e:
+        logger.error(f" Cannot connect to Ollama at {ollama_url}")
+        logger.exception('Connection error:')
+        return error_response(f'Cannot connect to Ollama. Make sure Ollama is running: ollama serve', 503)
+    except requests.exceptions.Timeout as e:
+        logger.error(f" Ollama request timed out after 120s")
+        return error_response('Ollama request timed out. The model may be loading or the request is too large.', 504)
     except Exception as e:
         logger.error(" ERROR")
         logger.exception('Error details:')
-        return error_response('Failed to generate participation prompt', 500)
+        return error_response(f'Failed to generate participation prompt: {str(e)}', 500)

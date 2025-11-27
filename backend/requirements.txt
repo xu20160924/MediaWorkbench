@@ -184,3 +184,4 @@ xhs==0.2.13
     # via backend (pyproject.toml)
 yarl==1.18.3
     # via aiohttp
+beautifulsoup4

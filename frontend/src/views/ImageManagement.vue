@@ -240,32 +240,34 @@
       <div class="default-dir-form">
         <div class="form-row">
           <div class="form-label">普通图片</div>
-          <n-input v-model:value="defaultLocations.general" placeholder="请输入本地目录路径" />
-          <n-button size="small" ghost @click="selectCurrentFolder('general')">
-            <template #icon>
-              <n-icon><FolderOpenOutline /></n-icon>
-            </template>
-            请选择目录
+          <n-input v-model:value="defaultLocations.general" placeholder="请输入服务器绝对路径，如: /tmp/images" />
+          <n-button size="small" @click="selectCurrentFolder('general')">
+            <template #icon><n-icon><FolderOpenOutline /></n-icon></template>
+            浏览
           </n-button>
         </div>
         <div class="form-row">
-          <div class="form-label">广告活动</div>
-          <n-input v-model:value="defaultLocations.advertising_campaign" placeholder="请输入本地目录路径" />
-          <n-button size="small" ghost @click="selectCurrentFolder('advertising_campaign')">
-            <template #icon>
-              <n-icon><FolderOpenOutline /></n-icon>
-            </template>
-            请选择目录
+          <div class="form-label">活动配图</div>
+          <n-input v-model:value="defaultLocations.advertising_campaign" placeholder="请输入服务器绝对路径，如: /tmp/ads" />
+          <n-button size="small" @click="selectCurrentFolder('advertising_campaign')">
+            <template #icon><n-icon><FolderOpenOutline /></n-icon></template>
+            浏览
           </n-button>
         </div>
         <div class="form-row">
           <div class="form-label">广告规则</div>
-          <n-input v-model:value="defaultLocations.advertising_rule" placeholder="请输入本地目录路径" />
-          <n-button size="small" ghost @click="selectCurrentFolder('advertising_rule')">
-            <template #icon>
-              <n-icon><FolderOpenOutline /></n-icon>
-            </template>
-            请选择目录
+          <n-input v-model:value="defaultLocations.advertising_rule" placeholder="请输入服务器绝对路径，如: /tmp/rules" />
+          <n-button size="small" @click="selectCurrentFolder('advertising_rule')">
+            <template #icon><n-icon><FolderOpenOutline /></n-icon></template>
+            浏览
+          </n-button>
+        </div>
+        <div class="form-row">
+          <div class="form-label">规则卡片</div>
+          <n-input v-model:value="defaultLocations.rule_card_screenshot" placeholder="请输入服务器绝对路径，如: /tmp/rule_cards" />
+          <n-button size="small" @click="selectCurrentFolder('rule_card_screenshot')">
+            <template #icon><n-icon><FolderOpenOutline /></n-icon></template>
+            浏览
           </n-button>
         </div>
         <div class="form-actions">
@@ -274,13 +276,12 @@
       </div>
     </n-modal>
 
+    <!-- Main Content -->
     <div class="content-wrapper">
-      <div class="page-header">
-        <h2 class="page-title">图片管理</h2>
-        <div class="header-content">
-          <div class="header-actions">
+      <div class="content-header" style="padding-top: 12px;">
+        <div class="header-row">
+          <div class="header-actions-left">
             <n-dropdown
-              v-model:show="showUploadMenu"
               trigger="click"
               :options="uploadOptions"
               @select="handleUploadSelect"
@@ -319,12 +320,39 @@
               </template>
               默认目录
             </n-button>
-            <n-button type="error" ghost class="delete-all" @click="confirmDeleteAll">
-              全部删除
+            <n-button :type="selectMode ? 'primary' : 'default'" ghost @click="toggleSelectMode">
+              <template #icon>
+                <n-icon v-if="!selectMode"><CheckboxOutline /></n-icon>
+                <n-icon v-else><CloseOutline /></n-icon>
+              </template>
+              {{ selectMode ? '取消选择' : '批量选择' }}
+            </n-button>
+            <n-button v-if="selectMode" type="primary" ghost @click="selectAll">
+              <template #icon>
+                <n-icon><CheckmarkDoneOutline /></n-icon>
+              </template>
+              全选
+            </n-button>
+            <n-button v-if="selectMode && hasSelectedImages" type="error" ghost @click="confirmDeleteSelected">
+              <template #icon>
+                <n-icon><TrashOutline /></n-icon>
+              </template>
+              删除选中 ({{ selectedCount }})
+            </n-button>
+            <n-button v-if="selectMode && hasSelectedImages" type="warning" ghost @click="showBatchStatusModal">
+              <template #icon>
+                <n-icon><RefreshOutline /></n-icon>
+              </template>
+              更新状态 ({{ selectedCount }})
+            </n-button>
+            <n-button v-if="!selectMode" type="warning" ghost @click="cleanupOrphanImages">
+              <template #icon>
+                <n-icon><TrashOutline /></n-icon>
+              </template>
+              清理脏数据
             </n-button>
           </div>
-          
-          <div class="view-options">
+          <div class="header-actions-right">
             <n-radio-group v-model:value="viewMode" name="view-mode">
               <n-radio-button value="grid" :focusable="false">
                 <template #icon>
@@ -340,7 +368,6 @@
               </n-radio-button>
             </n-radio-group>
           </div>
-          
         </div>
       </div>
 
@@ -348,12 +375,9 @@
         <div v-for="(image, index) in images" :key="'grid-' + index" class="image-item">
           <div class="image-preview-container" @click="selectMode ? onSelect(image) : showImagePreview(image)">
             <img :src="getImageUrl(image)" :alt="image.name" class="image-preview" @error="handleImageError" />
-            <div class="preview-overlay">
+            <div v-if="!selectMode" class="preview-overlay">
               <n-icon size="24"><SearchOutline /></n-icon>
               <span>预览</span>
-            </div>
-            <div v-if="selectMode && isSelectable(image)" class="select-mask" :class="{ selected: isSelected(image) }">
-              <n-icon size="20">{{ isSelected(image) ? '✓' : '' }}</n-icon>
             </div>
             <!-- Preview button in select mode -->
             <n-button v-if="selectMode && isSelectable(image)" class="preview-btn" size="tiny" circle type="info" @click.stop="openParticipationPreview(image)">
@@ -369,9 +393,26 @@
               <span>{{ formatDate(image.created_at) }}</span>
             </div>
             <div class="image-actions">
-              <n-tag v-if="image.participated" type="success">已参与</n-tag>
-              <n-button v-if="image.image_type==='advertising_rule'" size="small" type="primary" ghost @click="toggleParticipated(image)">参与</n-button>
-              <n-button size="small" type="error" ghost @click="confirmDelete(image)">删除</n-button>
+              <div class="actions-left">
+                <n-tag v-if="image.participated" type="success">已参与</n-tag>
+                <n-button v-if="image.image_type==='advertising_rule'" size="small" type="primary" ghost @click="toggleParticipated(image)">参与</n-button>
+                <n-button size="small" type="error" ghost @click="confirmDelete(image)">删除</n-button>
+              </div>
+              <div class="actions-right">
+                <n-button v-if="selectMode && isSelectable(image)" 
+                  circle
+                  size="medium" 
+                  :type="isSelected(image) ? 'success' : 'default'" 
+                  :ghost="!isSelected(image)"
+                  @click.stop="onSelect(image)">
+                  <template #icon>
+                    <n-icon size="20">
+                      <CheckmarkCircleOutline v-if="isSelected(image)" />
+                      <EllipseOutline v-else />
+                    </n-icon>
+                  </template>
+                </n-button>
+              </div>
             </div>
           </div>
         </div>
@@ -408,7 +449,6 @@
                     <div class="list-item-cell" style="width: 60px;">
                       <div class="list-image-container">
                         <img :src="getImageUrl(image)" class="list-image-preview" @error="handleImageError" />
-                        <div v-if="selectMode && isSelectable(image)" class="select-badge" :class="{ selected: isSelected(image) }">{{ isSelected(image) ? '已选' : '选择' }}</div>
                       </div>
                     </div>
                     <div class="list-item-cell" style="flex: 2;">
@@ -440,7 +480,7 @@
                       <div class="detail-value">{{ formatFileSize(image.size) }}</div>
                     </div>
                     
-                    <div class="list-item-cell" style="width: 80px;">
+                    <div class="list-item-cell" style="width: 180px;">
                       <div class="list-actions">
                         <n-tag v-if="image.participated" size="small" type="success">已参与</n-tag>
                         <n-tooltip v-if="image.image_type==='advertising_rule'" trigger="hover">
@@ -453,6 +493,20 @@
                           </template>
                           <span>参与</span>
                         </n-tooltip>
+                        <n-button v-if="selectMode && isSelectable(image)" 
+                          circle
+                          size="medium"
+                          :type="isSelected(image) ? 'success' : 'default'" 
+                          :ghost="!isSelected(image)"
+                          @click.stop="onSelect(image)"
+                          class="select-button">
+                          <template #icon>
+                            <n-icon size="20">
+                              <CheckmarkCircleOutline v-if="isSelected(image)" />
+                              <EllipseOutline v-else />
+                            </n-icon>
+                          </template>
+                        </n-button>
                         <n-tooltip trigger="hover">
                           <template #trigger>
                             <n-button text type="error" @click="confirmDelete(image)">
@@ -521,6 +575,8 @@ import {
   NThing,
   NRadioGroup,
   NRadioButton,
+  NRadio,
+  NSpace,
   NTag,
   NSelect,
   NInput,
@@ -548,7 +604,11 @@ import {
   RemoveOutline,
   DownloadOutline,
   ChevronBack,
-  ChevronForward
+  ChevronForward,
+  CheckboxOutline,
+  CheckmarkCircleOutline,
+  EllipseOutline,
+  CheckmarkDoneOutline
 } from '@vicons/ionicons5';
 import api from '@/api';
 
@@ -578,7 +638,11 @@ export default defineComponent({
     SearchOutline,
     RefreshOutline,
     RemoveOutline,
-    DownloadOutline
+    DownloadOutline,
+    CheckboxOutline,
+    CheckmarkCircleOutline,
+    EllipseOutline,
+    CheckmarkDoneOutline
   },
   
   setup() {
@@ -662,105 +726,55 @@ export default defineComponent({
     // Calculate zoom level for display (as number, not string)
     const zoomLevel = computed(() => scale.value);
     
-    // Image URL helper
+    // Image URL helper - uses ID-based endpoint for reliable image serving
     const getImageUrl = (image: any): string => {
       if (!image) {
-        console.log('No image provided');
-        return '';
-      }
-      
-      // Debug log the image object
-      console.log('Image object:', JSON.parse(JSON.stringify(image)));
-      
-      // Handle different URL properties from API
-      let imagePath = '';
-      
-      // Check for full URL first
-      if (image.url?.startsWith('http')) {
-        console.log('Using full URL from image.url:', image.url);
-        return image.url;
-      }
-      
-      if (image.img_url?.startsWith('http')) {
-        console.log('Using full URL from image.img_url:', image.img_url);
-        return image.img_url;
-      }
-      
-      // Extract path from different properties
-      if (image.img_url) {
-        console.log('Using img_url property:', image.img_url);
-        imagePath = image.img_url;
-      } else if (image.url) {
-        console.log('Using URL property:', image.url);
-        imagePath = image.url;
-      } else {
-        // Handle different possible path properties
-        imagePath = image.file_path || image.local_path || image.path || '';
-      }
-      
-      if (!imagePath) {
-        console.log('No valid path found in image object');
         return '';
       }
       
       const baseEnv = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/$/, '');
-      // Ensure devStaticBase includes the /api prefix when in development mode
-      const devStaticBase = baseEnv;
+      
+      // PRIMARY: Use ID-based endpoint - most reliable method
+      if (image.id) {
+        return `${baseEnv}/images/${image.id}/file`;
+      }
+      
+      // FALLBACK: Check for full URL
+      if (image.url?.startsWith('http')) {
+        return image.url;
+      }
+      if (image.img_url?.startsWith('http')) {
+        return image.img_url;
+      }
+      
+      // FALLBACK: Try to construct URL from path
+      let imagePath = image.img_url || image.url || image.file_path || image.local_path || image.path || '';
+      
+      if (!imagePath) {
+        return '';
+      }
+      
       let p = String(imagePath).replace(/\\/g, '/');
       
-      // If the path is already a full URL, return it directly
       if (p.startsWith('http')) {
-        console.log('Generated direct URL:', p);
         return p;
       }
       
-      // Special handling for paths returned by the backend
-      // The backend returns relative paths like 'upload/images/filename.png'
-      // which correspond to actual files in UPLOAD_FOLDER
-      if (p.startsWith('upload/')) {
-        let filename = p.replace('upload/', '');
-        // 处理路径中的'images/'部分，避免重复
-        filename = filename.replace('images/', '');
-        const url = `${devStaticBase}/images/uploads/${filename}`;
-        console.log('Generated upload URL for backend path:', url);
-        return url;
-      } else if (p.startsWith('output/')) {
-        let filename = p.replace('output/', '');
-        // 处理路径中的'images/'部分，避免重复
-        filename = filename.replace('images/', '');
-        const url = `${devStaticBase}/images/output/${filename}`;
-        console.log('Generated output URL for backend path:', url);
-        return url;
+      // Extract filename from various path formats
+      const filename = p.split('/').pop() || '';
+      if (!filename) {
+        return '';
       }
       
-      // Uploads: handle both 'upload/images/<filename>' and '/uploads/<filename>'
-      const uploadMatch = p.match(/(?:^|\/)upload\/images\/(.+)$/) || p.match(/(?:^|\/)uploads\/(.+)$/);
-      if (uploadMatch && uploadMatch[1]) {
-        const url = `${devStaticBase}/images/uploads/${uploadMatch[1]}`;
-        console.log('Generated upload URL:', url);
-        return url;
-      }
-      // Outputs: handle both 'output/images/<filename>' and '/output/<filename>'
-      const outputMatch = p.match(/(?:^|\/)output\/images\/(.+)$/) || p.match(/(?:^|\/)output\/(.+)$/);
-      if (outputMatch && outputMatch[1]) {
-        const url = `${devStaticBase}/images/output/${outputMatch[1]}`;
-        console.log('Generated output URL:', url);
-        return url;
+      // Try upload folder first, then output folder
+      if (p.includes('upload') || p.includes('Upload')) {
+        return `${baseEnv}/images/uploads/${filename}`;
+      } else if (p.includes('output') || p.includes('Output')) {
+        return `${baseEnv}/images/output/${filename}`;
       }
       
-      // Handle direct images paths without upload/ or output/ prefix (fixes images/images/... issue)
-      const imageMatch = p.match(/(?:^|\/)images\/(.+)$/);
-      if (imageMatch && imageMatch[1]) {
-        const url = `${devStaticBase}/images/${imageMatch[1]}`;
-        console.log('Generated direct image URL:', url);
-        return url;
-      }
-      
-      // Fallback: base URL + path
-      const normalized = p.startsWith('/') ? p.slice(1) : p;
-      const url = `${devStaticBase}/images/${normalized}`;
-      console.log('Generated fallback URL:', url);
-      return url;
+      // Default to uploads
+      return `${baseEnv}/images/uploads/${filename}`;
     };
     
     // Format file size
@@ -991,7 +1005,7 @@ export default defineComponent({
             icon: () => h(ImagesOutline)
           },
           { 
-            label: '广告图片', 
+            label: '活动配图', 
             key: 'advertising_campaign',
             icon: () => h(MegaphoneOutline)
           },
@@ -1013,7 +1027,7 @@ export default defineComponent({
             icon: () => h(FolderOpenOutline)
           },
           { 
-            label: '广告图片目录', 
+            label: '活动配图目录', 
             key: 'dir_advertising_campaign',
             icon: () => h(FolderOpenOutline)
           },
@@ -1289,6 +1303,9 @@ export default defineComponent({
         
         if (imageTypeFilter.value !== 'all') {
           params.image_type = imageTypeFilter.value;
+        } else {
+          // Exclude rule_card_screenshot from 'all' filter
+          params.exclude_type = 'rule_card_screenshot';
         }
         
         let response = await api.get('/images', { params });
@@ -1309,6 +1326,12 @@ export default defineComponent({
           normalized = normalized.filter((it: any) => {
             const t = it?.image_type || 'general';
             return t === wanted;
+          });
+        } else {
+          // Exclude rule_card_screenshot from 'all' filter
+          normalized = normalized.filter((it: any) => {
+            const t = it?.image_type || 'general';
+            return t !== 'rule_card_screenshot';
           });
         }
         if (participationFilter.value !== 'all') {
@@ -1341,6 +1364,9 @@ export default defineComponent({
           if (imageTypeFilter.value !== 'all') {
             const wanted = imageTypeFilter.value;
             normalized = normalized.filter((it: any) => (it?.image_type || 'general') === wanted);
+          } else {
+            // Exclude rule_card_screenshot from 'all' filter
+            normalized = normalized.filter((it: any) => (it?.image_type || 'general') !== 'rule_card_screenshot');
           }
           if (participationFilter.value !== 'all') {
             normalized = normalized.filter((it: any) => {
@@ -1368,7 +1394,8 @@ export default defineComponent({
     const defaultLocations = ref<Record<string, string>>({
       general: '',
       advertising_campaign: '',
-      advertising_rule: ''
+      advertising_rule: '',
+      rule_card_screenshot: ''
     });
 
     const basePaths = ref<{ upload_folder: string; output_folder: string }>({
@@ -1392,11 +1419,14 @@ export default defineComponent({
       try {
         const res = await api.get('/images/default-locations');
         const list = Array.isArray(res?.data?.data) ? res.data.data : res?.data || [];
+        console.log('[DEBUG] Loaded default locations from backend:', list);
         list.forEach((item: any) => {
           if (item?.image_type && item?.directory) {
             defaultLocations.value[item.image_type] = item.directory;
+            console.log(`[DEBUG] Set ${item.image_type} = ${item.directory}`);
           }
         });
+        console.log('[DEBUG] Final defaultLocations:', defaultLocations.value);
       } catch (e) {
         console.warn('加载默认目录失败', e);
       }
@@ -1405,6 +1435,7 @@ export default defineComponent({
     const saveDefaultLocations = async () => {
       const types = Object.keys(defaultLocations.value);
       const pending = types.filter(t => defaultLocations.value[t]);
+      console.log('[DEBUG] Saving default locations:', pending.map(t => `${t}=${defaultLocations.value[t]}`));
       if (pending.length === 0) {
         message.warning('请填写至少一个目录');
         return;
@@ -1414,15 +1445,20 @@ export default defineComponent({
         for (const t of pending) {
           const val = defaultLocations.value[t] || '';
           const isAbs = val.startsWith('/') || /^[A-Za-z]:\\/.test(val);
+          console.log(`[DEBUG] Processing ${t}: value="${val}", isAbsolute=${isAbs}`);
           if (isAbs) {
-            await api.post('/images/default-location', {
+            const response = await api.post('/images/default-location', {
               image_type: t,
               directory: val
             });
+            console.log(`[DEBUG] Saved ${t}, response:`, response.data);
+          } else {
+            console.warn(`[DEBUG] Skipping ${t} because path is not absolute:`, val);
           }
         }
         message.success('默认目录已保存并加载');
         showDefaultDirModal.value = false;
+        await loadDefaultLocations();
         await fetchImages();
       } catch (err: any) {
         console.error('保存默认目录失败', err);
@@ -1446,81 +1482,93 @@ export default defineComponent({
     };
 
     const selectCurrentFolder = async (type: string) => {
-      const pickWithInput = () => new Promise<FileList | null>((resolve) => {
-        const input = document.createElement('input');
-        input.type = 'file';
-        (input as any).webkitdirectory = true;
-        input.onchange = (e: Event) => {
-          const target = e.target as HTMLInputElement;
-          resolve(target.files || null);
-        };
-        input.click();
-      });
-
-      const uploadFiles = async (files: FileList | null) => {
-        if (!files || files.length === 0) return 0;
-        const arr = Array.from(files);
-        const root = (arr[0] as any).webkitRelativePath ? String((arr[0] as any).webkitRelativePath).split('/')[0] : '选定目录';
-        defaultLocations.value[type] = `browser://${root}`;
-        let count = 0;
-        for (const f of arr) {
-          if (isValidImageFile(f)) {
-            try {
-              await uploadFile(f as File, type);
-              count += 1;
-            } catch {}
-          }
-        }
-        return count;
-      };
-
       try {
         if ((window as any).showDirectoryPicker) {
+          // Use native directory picker (works on macOS Chrome/Edge)
           const dirHandle = await (window as any).showDirectoryPicker();
-          const files: File[] = [];
-          if (dirHandle && dirHandle.values) {
-            for await (const handle of dirHandle.values()) {
-              if (handle.kind === 'file') {
-                const file = await handle.getFile();
+          const folderName = dirHandle.name;
+          
+          // Try to get the full path automatically
+          let detectedPath = '';
+          
+          // Attempt 1: Try to get files and extract path from File object
+          try {
+            const files: File[] = [];
+            let fileCount = 0;
+            
+            // Get first few files to try to extract path
+            for await (const entry of dirHandle.values()) {
+              if (entry.kind === 'file' && fileCount < 3) {
+                const file = await entry.getFile();
                 files.push(file);
+                fileCount++;
+                
+                // Try to get path from file
+                if ((file as any).path) {
+                  const filePath = (file as any).path;
+                  detectedPath = filePath.substring(0, filePath.lastIndexOf('/'));
+                  break;
+                } else if ((file as any).webkitRelativePath) {
+                  // For webkit, we get relative path, need to construct absolute
+                  const relativePath = (file as any).webkitRelativePath;
+                  console.log('Relative path:', relativePath);
+                }
               }
+              if (detectedPath) break;
             }
-          } else if (dirHandle && dirHandle.entries) {
-            for await (const [name, handle] of (dirHandle as any).entries()) {
-              if (handle.kind === 'file') {
-                const file = await handle.getFile();
-                files.push(file);
-              }
-            }
+          } catch (e) {
+            console.log('Could not auto-detect path:', e);
           }
-          defaultLocations.value[type] = `browser://${dirHandle.name || '选定目录'}`;
-          let count = 0;
-          for (const f of files) {
-            if (isValidImageFile(f)) {
-              try {
-                await uploadFile(f, type);
-                count += 1;
-              } catch {}
-            }
-          }
-          if (count > 0) {
-            message.success(`已从目录加载 ${count} 张图片`);
-            await fetchImages();
+          
+          // If we detected a path automatically, use it
+          if (detectedPath) {
+            defaultLocations.value[type] = detectedPath;
+            message.success(`已自动检测并设置路径: ${detectedPath}`);
           } else {
-            message.info('目录中没有可用图片');
+            // Fallback: Ask user to input manually
+            await new Promise<void>((resolve) => {
+              let inputValue = '';
+              
+              dialog.info({
+                title: '输入文件夹路径',
+                content: () => h('div', { style: 'display: flex; flex-direction: column; gap: 12px;' }, [
+                  h('p', { style: 'color: #666;' }, `已选择文件夹: ${folderName}`),
+                  h('p', { style: 'font-size: 13px; color: #999;' }, '由于浏览器安全限制，无法自动获取完整路径。'),
+                  h('p', { style: 'font-size: 13px; color: #999;' }, '请手动输入该文件夹的绝对路径:'),
+                  h(NInput, {
+                    placeholder: `/Users/username/path/to/${folderName}`,
+                    defaultValue: '',
+                    onUpdateValue: (v: string) => { inputValue = v; }
+                  }),
+                  h('p', { style: 'font-size: 12px; color: #999; margin-top: 8px;' }, '💡 提示: 在Finder中右键点击文件夹，按住Option键，选择"拷贝...的路径名称"')
+                ]),
+                positiveText: '确定',
+                negativeText: '取消',
+                onPositiveClick: () => {
+                  if (inputValue && inputValue.trim()) {
+                    defaultLocations.value[type] = inputValue.trim();
+                    message.success(`已设置路径: ${inputValue.trim()}`);
+                  }
+                  resolve();
+                },
+                onNegativeClick: () => {
+                  resolve();
+                },
+                onClose: () => {
+                  resolve();
+                }
+              });
+            });
           }
         } else {
-          const files = await pickWithInput();
-          const count = await uploadFiles(files);
-          if (count > 0) {
-            message.success(`已从目录加载 ${count} 张图片`);
-            await fetchImages();
-          } else {
-            message.info('目录中没有可用图片');
-          }
+          // Fallback: show info message
+          message.info('您的浏览器不支持文件夹选择，请手动输入服务器绝对路径');
         }
-      } catch (e) {
-        message.error('选择目录失败');
+      } catch (e: any) {
+        // User cancelled
+        if (e.name !== 'AbortError') {
+          console.error('选择目录失败:', e);
+        }
       }
     };
 
@@ -1765,7 +1813,206 @@ export default defineComponent({
     };
     const toggleSelectMode = () => {
       selectMode.value = !selectMode.value;
+      // Clear selections when toggling off
+      if (!selectMode.value) {
+        selectedRegular.value = [];
+        selectedEvent.value = [];
+      }
     };
+    
+    // Select all selectable images
+    const selectAll = () => {
+      selectedRegular.value = [];
+      selectedEvent.value = [];
+      
+      images.value.forEach(img => {
+        if (isSelectable(img)) {
+          const id = Number(img.id);
+          if (img.image_type === 'general') {
+            selectedRegular.value.push(id);
+          } else if (img.image_type === 'advertising_campaign') {
+            selectedEvent.value.push(id);
+          }
+        }
+      });
+      
+      message.success(`已选择 ${selectedCount.value} 张图片`);
+    };
+    
+    // Show batch status update modal
+    const showBatchStatusModal = () => {
+      if (!hasSelectedImages.value) {
+        message.warning('请先选择要更新状态的图片');
+        return;
+      }
+      
+      // Determine which type of images are selected
+      const hasRegular = selectedRegular.value.length > 0;
+      const hasAd = selectedEvent.value.length > 0;
+      
+      let statusLabel = '';
+      let statusOptions: any[] = [];
+      
+      // Both general and event images use "已使用/未使用" (used/unused)
+      // Only advertising_rule uses "已参与/未参与" (participated/not participated)
+      if (hasRegular && hasAd) {
+        statusLabel = '状态';
+        statusOptions = [
+          { label: '已使用', value: 'used' },
+          { label: '未使用', value: 'unused' }
+        ];
+      } else if (hasRegular) {
+        statusLabel = '状态 (普通图片)';
+        statusOptions = [
+          { label: '已使用', value: 'used' },
+          { label: '未使用', value: 'unused' }
+        ];
+      } else if (hasAd) {
+        statusLabel = '状态 (活动配图)';
+        statusOptions = [
+          { label: '已使用', value: 'used' },
+          { label: '未使用', value: 'unused' }
+        ];
+      }
+      
+      // Use ref for reactive radio selection
+      const selectedStatus = ref(statusOptions[0]?.value || '');
+      
+      dialog.create({
+        title: `更新图片状态 (${selectedCount.value} 张)`,
+        content: () => h('div', { style: 'padding: 16px 0;' }, [
+          h('p', { style: 'margin-bottom: 12px; color: #666;' }, `选择要设置的${statusLabel}:`),
+          h(NRadioGroup, {
+            value: selectedStatus.value,
+            onUpdateValue: (v: string) => { selectedStatus.value = v; }
+          }, () => h(NSpace, { vertical: true }, () => statusOptions.map(opt =>
+            h(NRadio, { value: opt.value }, () => opt.label)
+          )))
+        ]),
+        positiveText: '确定',
+        negativeText: '取消',
+        onPositiveClick: async () => {
+          await batchUpdateStatus(selectedStatus.value);
+        }
+      });
+    };
+    
+    // Batch update image status
+    const batchUpdateStatus = async (status: string) => {
+      const loadingMsg = message.loading(`正在更新 ${selectedCount.value} 张图片状态...`, { duration: 0 });
+      try {
+        const allSelectedIds = [...selectedRegular.value, ...selectedEvent.value];
+        let successCount = 0;
+        
+        for (const id of allSelectedIds) {
+          try {
+            const image = images.value.find(img => img.id === id);
+            if (!image) continue;
+            
+            // Determine the appropriate field based on status and image type
+            let updateData: any = {};
+            if (status === 'used' || status === 'unused') {
+              updateData.used = (status === 'used');
+            } else if (status === 'participated' || status === 'not_participated') {
+              updateData.participated = (status === 'participated');
+            }
+            
+            await api.patch(`/images/${id}`, updateData);
+            
+            // Update local state
+            if (image) {
+              Object.assign(image, updateData);
+            }
+            
+            successCount++;
+          } catch (e) {
+            console.error(`Failed to update image ${id}:`, e);
+          }
+        }
+        
+        loadingMsg.destroy();
+        
+        if (successCount === allSelectedIds.length) {
+          message.success(`已成功更新 ${successCount} 张图片状态`);
+        } else {
+          message.warning(`成功更新 ${successCount} 张，失败 ${allSelectedIds.length - successCount} 张`);
+        }
+        
+        // Clear selections and refresh
+        selectedRegular.value = [];
+        selectedEvent.value = [];
+        selectMode.value = false;
+        await fetchImages();
+      } catch (error: any) {
+        loadingMsg.destroy();
+        console.error('Batch status update failed:', error);
+        message.error('批量更新状态失败');
+      }
+    };
+    
+    // Computed properties for batch delete
+    const selectedCount = computed(() => {
+      return selectedRegular.value.length + selectedEvent.value.length;
+    });
+    
+    const hasSelectedImages = computed(() => {
+      return selectedCount.value > 0;
+    });
+    
+    // Batch delete selected images
+    const confirmDeleteSelected = async () => {
+      if (!hasSelectedImages.value) {
+        message.warning('请先选择要删除的图片');
+        return;
+      }
+      
+      dialog.warning({
+        title: '确认删除',
+        content: `确定要删除选中的 ${selectedCount.value} 张图片吗？此操作不可撤销。`,
+        positiveText: '确定删除',
+        negativeText: '取消',
+        onPositiveClick: async () => {
+          const loadingMsg = message.loading(`正在删除 ${selectedCount.value} 张图片...`, { duration: 0 });
+          try {
+            const allSelectedIds = [...selectedRegular.value, ...selectedEvent.value];
+            let successCount = 0;
+            const errors: Array<{id: number, error: string}> = [];
+            
+            for (const id of allSelectedIds) {
+              try {
+                await api.delete(`/images/delete/${id}`);
+                successCount++;
+                loadingMsg.content = `正在删除图片 (${successCount}/${allSelectedIds.length})...`;
+              } catch (error: any) {
+                console.error(`Failed to delete image ${id}:`, error);
+                errors.push({
+                  id,
+                  error: error.response?.data?.message || error.message || '未知错误'
+                });
+              }
+            }
+            
+            if (errors.length === 0) {
+              message.success(`成功删除 ${successCount} 张图片`);
+            } else {
+              message.warning(`成功删除 ${successCount} 张，失败 ${errors.length} 张`);
+            }
+            
+            // Clear selections and refresh
+            selectedRegular.value = [];
+            selectedEvent.value = [];
+            selectMode.value = false;
+            await fetchImages();
+          } catch (error: any) {
+            console.error('Batch delete failed:', error);
+            message.error('删除失败: ' + (error?.response?.data?.message || error?.message || '未知错误'));
+          } finally {
+            loadingMsg.destroy();
+          }
+        }
+      });
+    };
+    
     const generateParticipation = async () => {
       const loadingMsg = message.loading('正在生成提示词...', { duration: 0 });
       try {
@@ -1789,6 +2036,66 @@ export default defineComponent({
       if (type === 'general') selectedRegular.value = [id];
       else if (type === 'advertising_campaign') selectedEvent.value = [id];
       await generateParticipation();
+    };
+    
+    // Cleanup orphan images (dirty data with missing files)
+    const cleanupOrphanImages = async () => {
+      dialog.warning({
+        title: '清理脏数据',
+        content: '将扫描并删除数据库中指向不存在文件的图片记录（如显示为占位图的条目）。此操作不可撤销，是否继续？',
+        positiveText: '扫描并清理',
+        negativeText: '取消',
+        onPositiveClick: async () => {
+          const loadingMsg = message.loading('正在扫描脏数据...', { duration: 0 });
+          try {
+            // First do a dry run to show count
+            const dryRunRes = await api.post('/images/cleanup-orphans', { 
+              dry_run: true,
+              image_type: imageTypeFilter.value !== 'all' ? imageTypeFilter.value : undefined
+            });
+            
+            const orphanCount = dryRunRes?.data?.data?.orphan_count || 0;
+            
+            if (orphanCount === 0) {
+              loadingMsg.destroy();
+              message.success('未发现脏数据');
+              return;
+            }
+            
+            loadingMsg.destroy();
+            
+            // Confirm actual deletion
+            dialog.warning({
+              title: '确认清理',
+              content: `发现 ${orphanCount} 条脏数据记录。确定要删除这些记录吗？`,
+              positiveText: `删除 ${orphanCount} 条`,
+              negativeText: '取消',
+              onPositiveClick: async () => {
+                const deleteMsg = message.loading(`正在删除 ${orphanCount} 条脏数据...`, { duration: 0 });
+                try {
+                  const res = await api.post('/images/cleanup-orphans', { 
+                    dry_run: false,
+                    image_type: imageTypeFilter.value !== 'all' ? imageTypeFilter.value : undefined
+                  });
+                  
+                  const deletedCount = res?.data?.data?.deleted_count || 0;
+                  message.success(`已清理 ${deletedCount} 条脏数据`);
+                  
+                  // Refresh image list
+                  await fetchImages();
+                } catch (e: any) {
+                  message.error('清理失败: ' + (e?.response?.data?.message || e?.message || '未知错误'));
+                } finally {
+                  deleteMsg.destroy();
+                }
+              }
+            });
+          } catch (e: any) {
+            loadingMsg.destroy();
+            message.error('扫描失败: ' + (e?.response?.data?.message || e?.message || '未知错误'));
+          }
+        }
+      });
     };
 
     return {
@@ -1858,6 +2165,13 @@ export default defineComponent({
       handleImageError,
       confirmDelete,
       confirmDeleteAll,
+      confirmDeleteSelected,
+      cleanupOrphanImages,
+      selectedCount,
+      hasSelectedImages,
+      toggleSelectMode,
+      selectAll,
+      showBatchStatusModal,
       handleUploadSelect,
       handleTagCreate,
       handlePreviewSelectionToggle,
@@ -2565,10 +2879,27 @@ body, html {
   position: relative;
 }
 
-.header-actions {
+.header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  margin-bottom: 16px;
+}
+
+.header-actions-left {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex: 1;
+}
+
+.header-actions-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
 }
 
 .filter-group {
@@ -2623,26 +2954,8 @@ body, html {
   gap: 12px;
 }
 .counts { color: #888; }
-.select-mask {
-  position: absolute;
-  top: 8px;
-  left: 8px;
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0,0,0,0.5);
-  color: #fff;
-  border-radius: 50%;
-  font-size: 16px;
-  border: 2px solid transparent;
-  transition: all 0.2s;
-}
-.select-mask.selected { 
-  background: rgba(76,175,80,0.95); 
-  border-color: white;
-  font-weight: bold;
+.image-preview-container {
+  position: relative;
 }
 
 .preview-btn {
@@ -2658,17 +2971,6 @@ body, html {
   opacity: 1;
 }
 .list-image-container { position: relative; }
-.select-badge {
-  position: absolute;
-  bottom: 4px;
-  left: 4px;
-  background: rgba(255,76,104,0.85);
-  color: #fff;
-  padding: 2px 6px;
-  border-radius: 6px;
-  font-size: 12px;
-}
-.select-badge.selected { background: rgba(76,175,80,0.85); }
 .prompt-content { white-space: pre-wrap; line-height: 1.6; }
 
 .page-title {
@@ -2753,10 +3055,25 @@ body, html {
 
 .image-actions {
   display: flex;
+  justify-content: space-between;
+  align-items: center;
   gap: 6px;
   margin-top: 6px;
   padding-top: 8px;
   border-top: 1px solid #f0f0f0;
+}
+
+.actions-left {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.actions-right {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-left: auto;
 }
 
 .image-actions .n-button {

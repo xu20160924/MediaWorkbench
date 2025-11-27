@@ -34,6 +34,9 @@
             placeholder="请输入小红书Cookie"
           />
         </n-form-item>
+        <n-form-item label="Session ID" path="session_id">
+          <n-input v-model:value="createForm.session_id" placeholder="请输入Session ID（选填）" />
+        </n-form-item>
       </n-form>
       <template #action>
         <n-button @click="showCreateModal = false">取消</n-button>
@@ -63,6 +66,9 @@
             placeholder="请输入小红书Cookie"
           />
         </n-form-item>
+        <n-form-item label="Session ID" path="session_id">
+          <n-input v-model:value="editForm.session_id" placeholder="请输入Session ID（选填）" />
+        </n-form-item>
         <n-form-item label="状态" path="status">
           <n-switch v-model:value="editForm.status" />
         </n-form-item>
@@ -88,6 +94,7 @@ interface User {
   username: string
   nickname: string
   cookie: string
+  session_id?: string
   status: boolean
   created_at: string
 }
@@ -107,14 +114,23 @@ const submitting = ref(false)
 const createForm = ref({
   username: '',
   nickname: '',
-  cookie: ''
+  cookie: '',
+  session_id: ''
 })
 
-const editForm = ref({
+const editForm = ref<{
+  id: number
+  username: string
+  nickname: string
+  cookie: string
+  session_id?: string
+  status: boolean
+}>({
   id: 0,
   username: '',
   nickname: '',
   cookie: '',
+  session_id: '',
   status: true
 })
 
@@ -210,7 +226,8 @@ const handleCreate = async () => {
       createForm.value = {
         username: '',
         nickname: '',
-        cookie: ''
+        cookie: '',
+        session_id: ''
       }
       fetchUsers()
     }
@@ -233,6 +250,7 @@ const handleEdit = async () => {
       username: editForm.value.username,
       nickname: editForm.value.nickname,
       cookie: editForm.value.cookie,
+      session_id: editForm.value.session_id,
       status: editForm.value.status
     })
     if (res.success) {
