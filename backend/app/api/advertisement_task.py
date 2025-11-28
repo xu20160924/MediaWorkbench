@@ -1,7 +1,7 @@
 """API endpoints for managing advertisement tasks"""
 from flask import Blueprint, request, jsonify, send_file
 from app.extensions import db
-from app.models.advertisement_task import AdvertisementTask, TaskStatus
+from app.models.advertisement_task import AdvertisementTask, TaskStatus, TaskType
 from app.models.task_rule_card import TaskRuleCard
 from app.models.image import ImageDefaultLocation, Image
 from app.models.workflow import Workflow
@@ -9,6 +9,7 @@ from sqlalchemy import func, desc
 from datetime import datetime
 import os
 import requests
+from app.utils.logger import logger
 
 bp = Blueprint('advertisement_task', __name__, url_prefix='/api/advertisement-tasks')
 
@@ -22,23 +23,49 @@ def get_tasks():
         page = request.args.get('page', 1, type=int)
         per_page = request.args.get('per_page', 20, type=int)
         
-        # Build query
-        query = AdvertisementTask.query
+        # Build query with eager loading of rule_cards
+        from sqlalchemy.orm import joinedload
+        query = AdvertisementTask.query.options(joinedload(AdvertisementTask.rule_cards))
         
         # Filter by status if provided
         if status:
             query = query.filter_by(status=status)
         
-        # Order by creation date (newest first)
-        query = query.order_by(desc(AdvertisementTask.created_at))
+        # Order by task_type (normal first, then community), then by creation date (newest first)
+        from sqlalchemy import case, or_
+        task_type_order = case(
+            (or_(AdvertisementTask.task_type == TaskType.normal, 
+                 AdvertisementTask.task_type == TaskType.regular), 0),
+            (AdvertisementTask.task_type == TaskType.community, 1),
+            (AdvertisementTask.task_type == TaskType.community_special, 2),
+            else_=3
+        )
+        query = query.order_by(task_type_order, desc(AdvertisementTask.created_at))
         
         # Paginate
         pagination = query.paginate(page=page, per_page=per_page, error_out=False)
         
+        tasks = []
+        for task in pagination.items:
+            try:
+                task_dict = task.to_dict(include_rule_cards=False)
+                # Explicitly query rule cards for this task
+                rule_cards = TaskRuleCard.query.filter_by(task_id=task.id).order_by(TaskRuleCard.display_order).all()
+                task_dict['rule_cards'] = [rc.to_dict() for rc in rule_cards]
+                task_dict['rule_cards_count'] = len(rule_cards)
+                task_dict['available_rule_cards_count'] = sum(1 for rc in rule_cards if not rc.participated)
+                tasks.append(task_dict)
+            except Exception as task_error:
+                logger.exception("Error serializing advertisement task", extra={
+                    'task_id': task.id,
+                    'task_status': task.status,
+                    'task_data': task.task_title
+                })
+                raise
         return jsonify({
             'success': True,
             'data': {
-                'tasks': [task.to_dict() for task in pagination.items],
+                'tasks': tasks,
                 'total': pagination.total,
                 'page': pagination.page,
                 'per_page': pagination.per_page,
@@ -46,6 +73,11 @@ def get_tasks():
             }
         })
     except Exception as e:
+        logger.exception("Failed to fetch advertisement tasks", extra={
+            'status_filter': status,
+            'page': page,
+            'per_page': per_page
+        })
         return jsonify({
             'success': False,
             'message': f'Failed to fetch tasks: {str(e)}'
@@ -88,6 +120,11 @@ def create_task():
                 'message': 'Task with this task_id already exists'
             }), 400
         
+        # Normalize status to lowercase
+        status_value = data.get('status', TaskStatus.active.value)
+        if isinstance(status_value, str):
+            status_value = status_value.lower()
+        
         # Create new task
         task = AdvertisementTask(
             task_id=data.get('task_id'),
@@ -100,7 +137,7 @@ def create_task():
             image_path=data.get('image_path'),  # Relative path from default location
             image_url=data.get('image_url'),  # External URL fallback
             ads_pool_amount=data.get('ads_pool_amount', 0),
-            status=data.get('status', TaskStatus.active.value),
+            status=status_value,
             task_type=data.get('task_type', 'normal'),  # Task type classification
             extra_data=data.get('extra_data'),
             deadline=data.get('deadline')
@@ -155,7 +192,11 @@ def update_task(task_id):
         if 'ads_pool_amount' in data:
             task.ads_pool_amount = data['ads_pool_amount']
         if 'status' in data:
-            task.status = data['status']
+            # Normalize status to lowercase
+            status_value = data['status']
+            if isinstance(status_value, str):
+                status_value = status_value.lower()
+            task.status = status_value
         if 'task_type' in data:
             task.task_type = data['task_type']
         if 'extra_data' in data:
@@ -607,29 +648,50 @@ def serve_rule_card_image(rule_card_id):
         if not rule_card.image_path:
             return jsonify({'success': False, 'message': 'No image for this rule card'}), 404
         
-        # Get the default location for advertising_rule images
+        # Try to get the default location for rule_card_screenshot first (from crawler)
+        # Fall back to advertising_rule for backward compatibility
         default_location = ImageDefaultLocation.query.filter_by(
-            image_type='advertising_rule'
+            image_type='rule_card_screenshot'
         ).first()
+        
+        if not default_location:
+            # Fallback to advertising_rule for backward compatibility
+            default_location = ImageDefaultLocation.query.filter_by(
+                image_type='advertising_rule'
+            ).first()
         
         if not default_location:
             return jsonify({
                 'success': False,
-                'message': 'Default image location not configured for advertising_rule'
+                'message': 'Default image location not configured. Please configure in Image Management > Default Directory'
             }), 500
         
-        # Construct full path
-        full_path = os.path.join(default_location.directory, rule_card.image_path)
+        # Check if image_path is absolute or relative
+        if os.path.isabs(rule_card.image_path):
+            # Absolute path - use directly
+            full_path = rule_card.image_path
+        else:
+            # Relative path - combine with default location
+            full_path = os.path.join(default_location.directory, rule_card.image_path)
         
         # Check if file exists
         if not os.path.exists(full_path):
             return jsonify({
                 'success': False,
-                'message': f'Image file not found: {rule_card.image_path}'
+                'message': f'Image file not found: {full_path}'
             }), 404
         
+        # Detect mimetype from file extension
+        mimetype = 'image/jpeg'
+        if full_path.lower().endswith('.png'):
+            mimetype = 'image/png'
+        elif full_path.lower().endswith('.gif'):
+            mimetype = 'image/gif'
+        elif full_path.lower().endswith('.webp'):
+            mimetype = 'image/webp'
+        
         # Serve the file
-        return send_file(full_path, mimetype='image/jpeg')
+        return send_file(full_path, mimetype=mimetype)
     except Exception as e:
         return jsonify({
             'success': False,
@@ -671,4 +733,123 @@ def mark_rule_card_participated(rule_card_id):
         return jsonify({
             'success': False,
             'message': f'Failed to mark rule card as participated: {str(e)}'
+        }), 500
+
+
+@bp.route('/rule-card/<int:rule_card_id>/status', methods=['PUT'])
+def update_rule_card_status(rule_card_id):
+    """Update rule card participated status (toggle on/off)"""
+    try:
+        data = request.get_json() or {}
+        participated = data.get('participated', False)
+        
+        rule_card = TaskRuleCard.query.get(rule_card_id)
+        if not rule_card:
+            return jsonify({'success': False, 'message': 'Rule card not found'}), 404
+        
+        rule_card.participated = participated
+        
+        if participated:
+            # If marking as participated, increment count and set timestamp
+            rule_card.participation_count = (rule_card.participation_count or 0) + 1
+            rule_card.last_participated_at = datetime.utcnow()
+        
+        # Update parent task participated status based on all rule cards
+        task = rule_card.task
+        all_cards_participated = all(rc.participated for rc in task.rule_cards)
+        task.participated = all_cards_participated
+        
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'data': rule_card.to_dict(),
+            'message': f'Rule card status updated to {"participated" if participated else "not participated"}'
+        })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'success': False,
+            'message': f'Failed to update rule card status: {str(e)}'
+        }), 500
+
+
+@bp.route('/sync', methods=['POST'])
+def sync_tasks():
+    """Sync tasks from XHS API response - upserts tasks to database"""
+    try:
+        data = request.json
+        if not data:
+            return jsonify({'success': False, 'message': 'No data provided'}), 400
+        
+        # Support both direct taskList and wrapped response format
+        task_list = data.get('taskList') or data.get('data', {}).get('taskList') or []
+        
+        if not task_list:
+            return jsonify({'success': False, 'message': 'No tasks in data'}), 400
+        
+        from app.models.advertisement_task import TaskType
+        
+        created_count = 0
+        updated_count = 0
+        skipped_count = 0
+        
+        for task_data in task_list:
+            task_no = task_data.get('taskNo')
+            if not task_no:
+                skipped_count += 1
+                continue
+            
+            # Check if task already exists
+            existing_task = AdvertisementTask.query.filter_by(task_id=task_no).first()
+            
+            # Parse task type from category or other fields
+            # NATIONAL = normal tasks, others might be community
+            category = task_data.get('category', 'NATIONAL')
+            task_type = TaskType.normal if category == 'NATIONAL' else TaskType.community
+            
+            # Check title for community indicators
+            title = task_data.get('title', '')
+            if '社群' in title or 'SP委托' in title or '社群专属' in title:
+                task_type = TaskType.community
+            
+            if existing_task:
+                # Update existing task
+                existing_task.task_title = title
+                existing_task.ads_pool_amount = float(task_data.get('cashMaxBudget', 0) or 0)
+                existing_task.task_type = task_type
+                existing_task.image_url = task_data.get('thumbnail')
+                updated_count += 1
+            else:
+                # Create new task
+                new_task = AdvertisementTask(
+                    task_id=task_no,
+                    task_title=title,
+                    card_title=title,
+                    ads_pool_amount=float(task_data.get('cashMaxBudget', 0) or 0),
+                    task_type=task_type,
+                    image_url=task_data.get('thumbnail'),
+                    status=TaskStatus.active
+                )
+                db.session.add(new_task)
+                created_count += 1
+        
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': f'Synced tasks: {created_count} created, {updated_count} updated, {skipped_count} skipped',
+            'data': {
+                'created': created_count,
+                'updated': updated_count,
+                'skipped': skipped_count,
+                'total': len(task_list)
+            }
+        })
+    except Exception as e:
+        db.session.rollback()
+        logger.exception("Failed to sync tasks")
+        return jsonify({
+            'success': False,
+            'message': f'Failed to sync tasks: {str(e)}'
         }), 500

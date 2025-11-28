@@ -36,6 +36,7 @@ def create_user():
         nickname = data.get('nickname')
         cookie = data.get('cookie')
         session_id = data.get('session_id')
+        x_signature = data.get('x_signature')
         
         if not all([username, cookie]):
             return error_response('Username and cookie are required')
@@ -47,7 +48,8 @@ def create_user():
             username=username,
             nickname=nickname,
             cookie=cookie,
-            session_id=session_id
+            session_id=session_id,
+            x_signature=x_signature
         )
         
         db.session.add(user)
@@ -78,6 +80,8 @@ def update_user(user_id):
             user.cookie = data['cookie']
         if 'session_id' in data:
             user.session_id = data['session_id']
+        if 'x_signature' in data:
+            user.x_signature = data['x_signature']
         if 'status' in data:
             user.status = data['status']
             

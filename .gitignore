@@ -191,3 +191,6 @@ app.db
 *.png
 *.jpg
 pre-push-check.sh
+
+.vscode
+.windsurf

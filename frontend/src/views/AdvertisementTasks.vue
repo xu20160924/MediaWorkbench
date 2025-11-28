@@ -57,7 +57,9 @@
       :loading="loading"
       :pagination="pagination"
       :row-key="(row: AdvertisementTask) => row.id"
+      remote
       @update:page="handlePageChange"
+      @update:page-size="handlePageSizeChange"
     />
 
     <!-- Create/Edit Modal -->
@@ -583,8 +585,10 @@ export default defineComponent({
       page: 1,
       pageSize: 20,
       itemCount: 0,
+      pageCount: 1,
       showSizePicker: true,
-      pageSizes: [10, 20, 50, 100]
+      pageSizes: [10, 20, 50, 100],
+      prefix: ({ itemCount }: { itemCount?: number }) => `共 ${itemCount ?? 0} 条`
     })
     
     const formData = ref({
@@ -881,6 +885,7 @@ export default defineComponent({
         if (response.data.success) {
           tasks.value = response.data.data.tasks
           pagination.value.itemCount = response.data.data.total
+          pagination.value.pageCount = response.data.data.total_pages || Math.ceil(response.data.data.total / pagination.value.pageSize)
         } else {
           message.error(response.data.message || '加载任务失败')
         }
@@ -904,6 +909,12 @@ export default defineComponent({
     
     const handlePageChange = (page: number) => {
       pagination.value.page = page
+      loadTasks()
+    }
+    
+    const handlePageSizeChange = (pageSize: number) => {
+      pagination.value.pageSize = pageSize
+      pagination.value.page = 1  // Reset to first page when page size changes
       loadTasks()
     }
     
@@ -1148,6 +1159,7 @@ export default defineComponent({
       formatDate,
       loadTasks,
       handlePageChange,
+      handlePageSizeChange,
       viewTask,
       editTask,
       deleteTask,
