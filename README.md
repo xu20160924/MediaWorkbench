@@ -31,6 +31,68 @@ MediaWorkbench 是一个基于 AI 的多媒体内容自动化创作与发布工�
 
 ## 🔧 技术架构
 
+```mermaid
+flowchart TD
+    subgraph 用户层
+        A[用户界面]
+    end
+    
+    subgraph 接入层
+        B[API网关]
+    end
+    
+    subgraph 服务层
+        C{路由分发}
+        D[爬虫服务]
+        E[工作流引擎]
+        F[发布服务]
+    end
+    
+    subgraph 数据层
+        G[Playwright]
+        H[ComfyUI]
+        I[多模型LLM网关]
+        J[XHS签名服务]
+        K[XHS API]
+    end
+    
+    subgraph 模型层
+        L[OpenAI]
+        M[Qwen]
+        N[LLaMA]
+    end
+    
+    A --> B
+    B --> C
+    C --> D
+    C --> E
+    C --> F
+    D --> G
+    E --> H
+    E --> I
+    F --> J
+    F --> K
+    I --> L
+    I --> M
+    I --> N
+    
+    %% 统一蓝色系风格
+    style A fill:#1E88E5,stroke:#0D47A1,color:white
+    style B fill:#2196F3,stroke:#0D47A1,color:white
+    style C fill:#42A5F5,stroke:#1E88E5,color:white
+    style D fill:#64B5F6,stroke:#2196F3,color:black
+    style E fill:#64B5F6,stroke:#2196F3,color:black
+    style F fill:#64B5F6,stroke:#2196F3,color:black
+    style G fill:#90CAF9,stroke:#42A5F5,color:black
+    style H fill:#90CAF9,stroke:#42A5F5,color:black
+    style I fill:#90CAF9,stroke:#42A5F5,color:black
+    style J fill:#90CAF9,stroke:#42A5F5,color:black
+    style K fill:#90CAF9,stroke:#42A5F5,color:black
+    style L fill:#BBDEFB,stroke:#64B5F6,color:black
+    style M fill:#BBDEFB,stroke:#64B5F6,color:black
+    style N fill:#BBDEFB,stroke:#64B5F6,color:black
+```
+
 ### 后端技术栈
 - Python 3.8+
 - Flask
@@ -146,7 +208,9 @@ xhs-automate/
 
 - 提交 Issue
 - 发送邮件至：[xu20151211@gmail.com]
+- 入群交流：
 
+    <img src="qrcode.jpg" width="180">
 ---
 
 **注意**：使用本工具时请遵守相关平台规则和法律法规，合理使用自动化功能。
