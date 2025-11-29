@@ -280,7 +280,7 @@
                     <!-- Title and status row -->
                     <div style="display: flex; justify-content: space-between; align-items: center;">
                       <n-text strong style="font-size: 16px;">{{ card.rule_name || `规则卡片 ${card.display_order + 1}` }}</n-text>
-                      <n-space size="8">
+                      <n-space :size="8">
                         <n-tag :type="card.participated ? 'success' : 'default'" size="small" round>
                           {{ card.participated ? '✓ 已参与' : '○ 未参与' }}
                         </n-tag>
@@ -643,6 +643,143 @@ export default defineComponent({
       return new Date(dateStr).toLocaleString('zh-CN')
     }
     
+
+    
+    const loadTasks = async () => {
+      loading.value = true
+      try {
+        const params: any = {
+          page: pagination.value.page,
+          per_page: pagination.value.pageSize
+        }
+        if (filterStatus.value) {
+          params.status = filterStatus.value
+        }
+        
+        const response = await axios.get('http://localhost:5001/api/advertisement-tasks/', { params })
+        if (response.data.success) {
+          tasks.value = response.data.data.tasks
+          pagination.value.itemCount = response.data.data.total
+          pagination.value.pageCount = response.data.data.total_pages || Math.ceil(response.data.data.total / pagination.value.pageSize)
+        } else {
+          message.error(response.data.message || '加载任务失败')
+        }
+      } catch (error) {
+        message.error('加载任务失败: ' + (error as Error).message)
+      } finally {
+        loading.value = false
+      }
+    }
+    
+    const loadStats = async () => {
+      try {
+        const response = await axios.get('http://localhost:5001/api/advertisement-tasks/stats')
+        if (response.data.success) {
+          stats.value = response.data.data
+        }
+      } catch (error) {
+        console.error('Failed to load stats:', error)
+      }
+    }
+    
+    const handlePageChange = (page: number) => {
+      pagination.value.page = page
+      loadTasks()
+    }
+    
+    const handlePageSizeChange = (pageSize: number) => {
+      pagination.value.pageSize = pageSize
+      pagination.value.page = 1  // Reset to first page when page size changes
+      loadTasks()
+    }
+    
+    const viewTask = (task: AdvertisementTask) => {
+      viewingTask.value = task
+      showDetailModal.value = true
+    }
+    
+    const editTask = (task: AdvertisementTask) => {
+      editingTask.value = task
+      formData.value = {
+        task_id: task.task_id,
+        task_title: task.task_title,
+        card_title: task.card_title || '',
+        submission_rules: task.submission_rules || '',
+        tag_require: task.tag_require || '',
+        settlement_way: task.settlement_way || '',
+        hashtags: task.hashtags || [],
+        image_url: task.image_url || '',
+        ads_pool_amount: task.ads_pool_amount,
+        status: task.status,
+        deadline: task.deadline ? new Date(task.deadline).getTime() : null
+      }
+      showCreateModal.value = true
+    }
+    
+    const selectedRuleCard = ref<RuleCard | null>(null)
+    
+    const markRuleCardParticipated = async (ruleCardId: number) => {
+      try {
+        const response = await axios.patch(
+          `http://localhost:5001/api/advertisement-tasks/rule-card/${ruleCardId}/participated`
+        )
+        if (response.data.success) {
+          message.success('已标记为已参与')
+          
+          // Update the rule card in viewingTask if modal is open
+          if (viewingTask.value && viewingTask.value.rule_cards) {
+            const cardIndex = viewingTask.value.rule_cards.findIndex((c: RuleCard) => c.id === ruleCardId)
+            if (cardIndex !== -1) {
+              viewingTask.value.rule_cards[cardIndex] = response.data.data
+            }
+          }
+          
+          loadTasks()
+          loadStats()
+        } else {
+          message.error(response.data.message || '标记失败')
+        }
+      } catch (error) {
+        message.error('标记失败: ' + (error as Error).message)
+      }
+    }
+    
+    const selectRuleCard = (card: RuleCard, task: AdvertisementTask) => {
+      if (card.participated) {
+        message.warning('该规则卡片已被使用过')
+        return
+      }
+      selectedRuleCard.value = card
+      message.info(`已选择: ${card.rule_name || '规则卡片'}`, {
+        duration: 2000
+      })
+      // Open participate modal with this task and pre-selected rule card
+      openParticipateModal(task)
+    }
+    
+    const deleteTask = (task: AdvertisementTask) => {
+      dialog.warning({
+        title: '确认删除',
+        content: `确定要删除任务 "${task.task_title}" 吗？此操作不可恢复。`,
+        positiveText: '删除',
+        negativeText: '取消',
+        onPositiveClick: async () => {
+          try {
+            const response = await axios.delete(`http://localhost:5001/api/advertisement-tasks/${task.id}`)
+            if (response.data.success) {
+              message.success('删除成功')
+              loadTasks()
+              loadStats()
+            } else {
+              message.error(response.data.message || '删除失败')
+            }
+          } catch (error) {
+            message.error('删除失败: ' + (error as Error).message)
+          }
+        }
+      })
+    }
+
     const columns: DataTableColumns<AdvertisementTask> = [
       {
         type: 'expand',
@@ -869,141 +1006,6 @@ export default defineComponent({
         )
       }
     ]
-    
-    const loadTasks = async () => {
-      loading.value = true
-      try {
-        const params: any = {
-          page: pagination.value.page,
-          per_page: pagination.value.pageSize
-        }
-        if (filterStatus.value) {
-          params.status = filterStatus.value
-        }
-        
-        const response = await axios.get('http://localhost:5001/api/advertisement-tasks/', { params })
-        if (response.data.success) {
-          tasks.value = response.data.data.tasks
-          pagination.value.itemCount = response.data.data.total
-          pagination.value.pageCount = response.data.data.total_pages || Math.ceil(response.data.data.total / pagination.value.pageSize)
-        } else {
-          message.error(response.data.message || '加载任务失败')
-        }
-      } catch (error) {
-        message.error('加载任务失败: ' + (error as Error).message)
-      } finally {
-        loading.value = false
-      }
-    }
-    
-    const loadStats = async () => {
-      try {
-        const response = await axios.get('http://localhost:5001/api/advertisement-tasks/stats')
-        if (response.data.success) {
-          stats.value = response.data.data
-        }
-      } catch (error) {
-        console.error('Failed to load stats:', error)
-      }
-    }
-    
-    const handlePageChange = (page: number) => {
-      pagination.value.page = page
-      loadTasks()
-    }
-    
-    const handlePageSizeChange = (pageSize: number) => {
-      pagination.value.pageSize = pageSize
-      pagination.value.page = 1  // Reset to first page when page size changes
-      loadTasks()
-    }
-    
-    const viewTask = (task: AdvertisementTask) => {
-      viewingTask.value = task
-      showDetailModal.value = true
-    }
-    
-    const editTask = (task: AdvertisementTask) => {
-      editingTask.value = task
-      formData.value = {
-        task_id: task.task_id,
-        task_title: task.task_title,
-        card_title: task.card_title || '',
-        submission_rules: task.submission_rules || '',
-        tag_require: task.tag_require || '',
-        settlement_way: task.settlement_way || '',
-        hashtags: task.hashtags || [],
-        image_url: task.image_url || '',
-        ads_pool_amount: task.ads_pool_amount,
-        status: task.status,
-        deadline: task.deadline ? new Date(task.deadline).getTime() : null
-      }
-      showCreateModal.value = true
-    }
-    
-    const selectedRuleCard = ref<RuleCard | null>(null)
-    
-    const markRuleCardParticipated = async (ruleCardId: number) => {
-      try {
-        const response = await axios.patch(
-          `http://localhost:5001/api/advertisement-tasks/rule-card/${ruleCardId}/participated`
-        )
-        if (response.data.success) {
-          message.success('已标记为已参与')
-          
-          // Update the rule card in viewingTask if modal is open
-          if (viewingTask.value && viewingTask.value.rule_cards) {
-            const cardIndex = viewingTask.value.rule_cards.findIndex((c: RuleCard) => c.id === ruleCardId)
-            if (cardIndex !== -1) {
-              viewingTask.value.rule_cards[cardIndex] = response.data.data
-            }
-          }
-          
-          loadTasks()
-          loadStats()
-        } else {
-          message.error(response.data.message || '标记失败')
-        }
-      } catch (error) {
-        message.error('标记失败: ' + (error as Error).message)
-      }
-    }
-    
-    const selectRuleCard = (card: RuleCard, task: AdvertisementTask) => {
-      if (card.participated) {
-        message.warning('该规则卡片已被使用过')
-        return
-      }
-      selectedRuleCard.value = card
-      message.info(`已选择: ${card.rule_name || '规则卡片'}`, {
-        duration: 2000
-      })
-      // Open participate modal with this task and pre-selected rule card
-      openParticipateModal(task)
-    }
-    
-    const deleteTask = (task: AdvertisementTask) => {
-      dialog.warning({
-        title: '确认删除',
-        content: `确定要删除任务 "${task.task_title}" 吗？此操作不可恢复。`,
-        positiveText: '删除',
-        negativeText: '取消',
-        onPositiveClick: async () => {
-          try {
-            const response = await axios.delete(`http://localhost:5001/api/advertisement-tasks/${task.id}`)
-            if (response.data.success) {
-              message.success('删除成功')
-              loadTasks()
-              loadStats()
-            } else {
-              message.error(response.data.message || '删除失败')
-            }
-          } catch (error) {
-            message.error('删除失败: ' + (error as Error).message)
-          }
-        }
-      })
-    }
     
     const openParticipateModal = (task: AdvertisementTask) => {
       // Navigate to participation page instead of opening modal

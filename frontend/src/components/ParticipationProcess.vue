@@ -902,11 +902,22 @@ export default defineComponent({
       }
       
       const task = advertisementTask.value;
+      const ruleCard = selectedRuleCard.value;
+      
+      // Prioritize rule card data if available
+      const submissionRules = (ruleCard && ruleCard.submission_rules) 
+        ? ruleCard.submission_rules 
+        : (task.submission_rules || '');
+        
+      const tagRequire = (ruleCard && ruleCard.tag_require)
+        ? ruleCard.tag_require
+        : (task.tag_require || '');
+
       const replacements: Record<string, string> = {
         '{task_title}': task.task_title || '',
         '{hashtags}': (task.hashtags || []).join(' ') || '',
-        '{tag_require}': task.tag_require || '',
-        '{submission_rules}': task.submission_rules || '',
+        '{tag_require}': tagRequire,
+        '{submission_rules}': submissionRules,
         '{task_id}': task.id?.toString() || ''
       };
       

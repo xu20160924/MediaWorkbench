@@ -1,8 +1,16 @@
+import logging
 from flask import Flask
 from flask_cors import CORS
 from flask_migrate import Migrate
 
 from app.api import image, note, prompt, translate, static, health, workflow, user, agent, advertisement_task, image_locations, system_config, filesystem, crawler
+
+# Configure logging for the entire application
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(name)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 from app.extensions import db
 from app.scheduler import scheduler
 from conf import DATABASE_URI
