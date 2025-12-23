@@ -11,7 +11,7 @@ from app.utils.response import success_response, error_response
 from conf import ALLOWED_EXTENSIONS, UPLOAD_FOLDER, OUTPUT_FOLDER, BASE_PATH
 from comfyui_api.utils.actions.prompt_to_image import prompt_to_image
 from comfyui_api.utils.actions.load_workflow import load_workflow
-from app.models.image import Image, ImageSource, ImageType, ImageDefaultLocation
+from app.models.image import Image, ImageSource, ImageType, ImageDefaultLocation, DeletedImagePath
 from app.extensions import db
 from app.utils.logger import logger
 from app.models.workflow import Workflow
@@ -50,11 +50,21 @@ def scan_image_directory():
         
         logger.info(f'Scanning directory: {directory}, found {len(image_files)} image files, type: {image_type_enum}, force_rescan: {force_rescan}')
 
+        # Get all deleted paths to skip during scanning
+        deleted_paths = set(d.local_path for d in DeletedImagePath.query.all())
+        logger.info(f'Found {len(deleted_paths)} deleted paths to skip')
+
         added_count = 0
         updated_count = 0
         skipped_count = 0
         
         for img_path in image_files:
+            # Skip if this path was previously deleted
+            if str(img_path) in deleted_paths:
+                skipped_count += 1
+                logger.debug(f'Skipping deleted path: {img_path}')
+                continue
+            
             # 先尝试通过本地路径匹配
             existing = Image.query.filter_by(local_path=str(img_path)).first()
             if existing:
@@ -745,8 +755,11 @@ def delete_image(image_id):
         image = Image.query.get_or_404(image_id)
         logger.info(f"Found image: {image_id}, path: {image.file_path}, source: {image.source}")
         
+        # Get source value (handle both enum and string)
+        source_val = image.source.value if hasattr(image.source, 'value') else image.source
+        
         # 只删除上传的文件，不删除本地目录中的文件
-        if image.source == ImageSource.upload.value:
+        if source_val == ImageSource.upload.value:
             p = str(image.file_path or '').replace('\\', '/')
             filename = None
             if p.startswith('/uploads/'):
@@ -766,6 +779,14 @@ def delete_image(image_id):
                         logger.warning(f"Failed to delete file {filepath}: {str(e)}, but will continue to delete database record")
                 else:
                     logger.warning(f"File not found: {filepath}, but will continue to delete database record")
+        
+        # For local_dir images, record the path to prevent re-scanning
+        if source_val == ImageSource.local_dir.value and image.local_path:
+            existing_deleted = DeletedImagePath.query.filter_by(local_path=image.local_path).first()
+            if not existing_deleted:
+                deleted_record = DeletedImagePath(local_path=image.local_path)
+                db.session.add(deleted_record)
+                logger.info(f"Recorded deleted path: {image.local_path}")
         
         # 删除数据库记录
         db.session.delete(image)
@@ -803,6 +824,15 @@ def clear_all_images():
         for image in images:
             try:
                 p = str(image.file_path).replace('\\', '/') if image.file_path else ''
+                source_val = image.source.value if hasattr(image.source, 'value') else image.source
+                
+                # Record local_dir paths to prevent re-scanning
+                if source_val == ImageSource.local_dir.value and image.local_path:
+                    existing_deleted = DeletedImagePath.query.filter_by(local_path=image.local_path).first()
+                    if not existing_deleted:
+                        deleted_record = DeletedImagePath(local_path=image.local_path)
+                        db.session.add(deleted_record)
+                
                 if p:
                     if p.startswith('/uploads/') or '/upload/images/' in p or p.startswith('upload/images/'):
                         filename = None

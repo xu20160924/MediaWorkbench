@@ -1,4 +1,4 @@
-<template>
+  <template>
   <div class="crawler-management">
     <n-card title="小红书广告任务爬虫" class="main-card">
       <template #header-extra>
@@ -56,6 +56,13 @@
 
             <!-- Crawl Settings Section -->
             <n-divider title-placement="left">爬取设置</n-divider>
+
+            <n-form-item label="任务类型" path="taskType">
+              <n-radio-group v-model:value="config.taskType">
+                <n-radio-button value="submission">投稿活动</n-radio-button>
+                <n-radio-button value="buyer">买手任务</n-radio-button>
+              </n-radio-group>
+            </n-form-item>
 
             <n-grid :cols="2" :x-gap="24">
               <n-gi>
@@ -331,6 +338,7 @@ export default defineComponent({
     // Crawler configuration
     const config = reactive({
       selectedUserId: null as number | null,
+      taskType: 'submission',
       pageSize: 20,
       maxPages: null as number | null,
       delayRange: [2, 4] as [number, number],  // Random delay range for list pages
@@ -586,6 +594,7 @@ export default defineComponent({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             user_id: config.selectedUserId,
+            task_type: config.taskType,
             page_size: config.pageSize,
             max_pages: config.maxPages,
             delay: config.delayRange[0],

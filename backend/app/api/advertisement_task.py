@@ -2,6 +2,7 @@
 from flask import Blueprint, request, jsonify, send_file
 from app.extensions import db
 from app.models.advertisement_task import AdvertisementTask, TaskStatus, TaskType
+from app.models.buyer_task import BuyerTask, BuyerTaskStatus
 from app.models.task_rule_card import TaskRuleCard
 from app.models.image import ImageDefaultLocation, Image
 from app.models.workflow import Workflow
@@ -12,6 +13,108 @@ import requests
 from app.utils.logger import logger
 
 bp = Blueprint('advertisement_task', __name__, url_prefix='/api/advertisement-tasks')
+
+
+@bp.route('/combined', methods=['GET'])
+def get_combined_tasks():
+    """Get all tasks (buyer + submission + community) combined with proper sorting"""
+    try:
+        # Get query parameters
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 20, type=int)
+        page_size = request.args.get('page_size', per_page, type=int)  # Support both params
+        status = request.args.get('status')
+        
+        # Fetch buyer tasks
+        buyer_query = BuyerTask.query
+        if status:
+            buyer_query = buyer_query.filter_by(status=status)
+        buyer_tasks = buyer_query.all()
+        
+        # Fetch advertisement tasks (submission + community)
+        ad_query = AdvertisementTask.query
+        if status:
+            ad_query = ad_query.filter_by(status=status)
+        ad_tasks = ad_query.all()
+        
+        # Convert to dictionaries and add task_type
+        all_tasks = []
+        
+        # Add buyer tasks with buyer priority (0)
+        for task in buyer_tasks:
+            task_dict = {
+                'id': f"buyer_{task.id}",
+                'task_id': task.item_id,
+                'task_title': task.title,
+                'task_type': 'buyer',
+                'status': task.status,
+                'item_price': str(task.item_price) if task.item_price else None,
+                'item_income': str(task.item_income) if task.item_income else None,
+                'rate': task.rate,
+                'total_sales_volume': task.total_sales_volume,
+                'main_image_url': task.main_image_url,
+                'seller_name': task.seller_name,
+                'seller_score': task.seller_score,
+                'created_at': task.created_at.isoformat() if task.created_at else None,
+                'updated_at': task.updated_at.isoformat() if task.updated_at else None,
+                '_sort_priority': 0,  # Buyer tasks first
+                '_created_at': task.created_at
+            }
+            all_tasks.append(task_dict)
+        
+        # Add advertisement tasks with submission/community priority
+        for task in ad_tasks:
+            task_dict = task.to_dict(include_rule_cards=False)
+            # Determine sort priority
+            if task.task_type in [TaskType.submission, TaskType.normal, TaskType.regular]:
+                task_dict['_sort_priority'] = 1  # Submission tasks second
+            elif task.task_type == TaskType.community:
+                task_dict['_sort_priority'] = 2  # Community tasks third
+            elif task.task_type == TaskType.community_special:
+                task_dict['_sort_priority'] = 3  # Community special fourth
+            else:
+                task_dict['_sort_priority'] = 4 # Others last
+            task_dict['_created_at'] = task.created_at
+            
+            # Add rule cards
+            rule_cards = TaskRuleCard.query.filter_by(task_id=task.id).order_by(TaskRuleCard.display_order).all()
+            task_dict['rule_cards'] = [rc.to_dict() for rc in rule_cards]
+            task_dict['rule_cards_count'] = len(rule_cards)
+            task_dict['available_rule_cards_count'] = sum(1 for rc in rule_cards if not rc.participated)
+            
+            all_tasks.append(task_dict)
+        
+        # Sort: first by priority (buyer > submission > community), then by created_at (newest first)
+        all_tasks.sort(key=lambda x: (x['_sort_priority'], -(x['_created_at'].timestamp() if x['_created_at'] else 0)))
+        
+        # Remove sort fields before returning
+        for task in all_tasks:
+            task.pop('_sort_priority', None)
+            task.pop('_created_at', None)
+        
+        # Manual pagination
+        total = len(all_tasks)
+        start = (page - 1) * page_size
+        end = start + page_size
+        paginated_tasks = all_tasks[start:end]
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'tasks': paginated_tasks,
+                'total': total,
+                'page': page,
+                'per_page': page_size,
+                'total_pages': (total + page_size - 1) // page_size  # Ceiling division
+            }
+        })
+    except Exception as e:
+        logger.exception("Failed to fetch combined tasks", extra={
+            'status_filter': status,
+            'page': page,
+            'per_page': per_page
+        })
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @bp.route('/', methods=['GET'])
@@ -31,14 +134,16 @@ def get_tasks():
         if status:
             query = query.filter_by(status=status)
         
-        # Order by task_type (normal first, then community), then by creation date (newest first)
+        # Order by task_type (buyer first, then submission, then community), then by creation date (newest first)
         from sqlalchemy import case, or_
         task_type_order = case(
-            (or_(AdvertisementTask.task_type == TaskType.normal, 
-                 AdvertisementTask.task_type == TaskType.regular), 0),
-            (AdvertisementTask.task_type == TaskType.community, 1),
-            (AdvertisementTask.task_type == TaskType.community_special, 2),
-            else_=3
+            (AdvertisementTask.task_type == TaskType.buyer, 0),
+            (or_(AdvertisementTask.task_type == TaskType.submission, 
+                 AdvertisementTask.task_type == TaskType.normal,
+                 AdvertisementTask.task_type == TaskType.regular), 1),
+            (AdvertisementTask.task_type == TaskType.community, 2),
+            (AdvertisementTask.task_type == TaskType.community_special, 3),
+            else_=4
         )
         query = query.order_by(task_type_order, desc(AdvertisementTask.created_at))
         

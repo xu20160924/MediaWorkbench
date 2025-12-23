@@ -7,10 +7,12 @@ from sqlalchemy.orm import validates
 
 class TaskType(Enum):
     """Task type classification"""
-    normal = 'normal'
-    regular = 'regular'  # Alias for normal (legacy)
+    submission = 'submission'  # Submission tasks (投稿活动)
+    normal = 'normal'  # Legacy alias for submission
+    regular = 'regular'  # Legacy alias for submission
     community = 'community'  # Community tasks (社群任务)
     community_special = 'community_special'  # Community special/SP tasks
+    buyer = 'buyer'  # Buyer tasks (买手合作)
     
     # Allow case-insensitive mapping and handle legacy values
     @classmethod
@@ -23,8 +25,8 @@ class TaskType(Enum):
             # Handle legacy or alternative names
             if value_lower in ('community', 'community_task'):
                 return cls.community
-            if value_lower in ('regular', 'default'):
-                return cls.normal
+            if value_lower in ('regular', 'default', 'normal'):
+                return cls.submission
         return super()._missing_(value)
 
 

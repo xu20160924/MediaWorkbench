@@ -96,3 +96,19 @@ class ImageDefaultLocation(db.Model):
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
         }
+
+
+# Track deleted local paths to prevent re-scanning
+class DeletedImagePath(db.Model):
+    __tablename__ = 'deleted_image_paths'
+
+    id = db.Column(db.Integer, primary_key=True)
+    local_path = db.Column(db.String(500), nullable=False, unique=True)
+    deleted_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'local_path': self.local_path,
+            'deleted_at': self.deleted_at.isoformat() if self.deleted_at else None,
+        }

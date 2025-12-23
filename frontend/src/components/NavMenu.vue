@@ -37,12 +37,16 @@
       <span>LLM 模型管理</span>
     </router-link>
     <router-link to="/advertisement-tasks" class="nav-item">
-      <i class="icon ads-icon"></i>
-      <span>广告任务管理</span>
+      <span class="nav-icon">📋</span>
+      <span>广告任务</span>
+    </router-link>
+    <router-link to="/buyer-tasks" class="nav-item">
+      <span class="nav-icon">🛒</span>
+      <span>买手任务</span>
     </router-link>
     <router-link to="/crawler" class="nav-item">
-      <i class="icon crawler-icon"></i>
-      <span>任务爬虫</span>
+      <span class="nav-icon">🕷️</span>
+      <span>爬虫管理</span>
     </router-link>
   </nav>
 </template>

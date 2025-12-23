@@ -3,7 +3,7 @@ from flask import Flask
 from flask_cors import CORS
 from flask_migrate import Migrate
 
-from app.api import image, note, prompt, translate, static, health, workflow, user, agent, advertisement_task, image_locations, system_config, filesystem, crawler
+from app.api import image, note, prompt, translate, static, health, workflow, user, agent, advertisement_task, image_locations, system_config, filesystem, crawler, buyer_task, proxy
 
 # Configure logging for the entire application
 logging.basicConfig(
@@ -64,6 +64,8 @@ def create_app():
     app.register_blueprint(system_config.bp)
     app.register_blueprint(filesystem.bp)
     app.register_blueprint(crawler.bp)
+    app.register_blueprint(buyer_task.bp)
+    app.register_blueprint(proxy.bp)
 
     # Initialize running agents
     # with app.app_context():
