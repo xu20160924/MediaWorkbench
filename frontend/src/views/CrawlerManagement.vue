@@ -61,102 +61,147 @@
               <n-radio-group v-model:value="config.taskType">
                 <n-radio-button value="submission">投稿活动</n-radio-button>
                 <n-radio-button value="buyer">买手任务</n-radio-button>
+                <n-radio-button value="url-crawl">URL爬取</n-radio-button>
               </n-radio-group>
             </n-form-item>
 
-            <n-grid :cols="2" :x-gap="24">
-              <n-gi>
-                <n-form-item label="每页数量" path="pageSize">
-                  <n-input-number
-                    v-model:value="config.pageSize"
-                    :min="1"
-                    :max="50"
-                    style="width: 100%"
-                  />
-                </n-form-item>
-              </n-gi>
-              <n-gi>
-                <n-form-item label="最大页数" path="maxPages">
-                  <n-input-number
-                    v-model:value="config.maxPages"
-                    :min="1"
-                    :max="100"
-                    placeholder="不限制"
-                    style="width: 100%"
-                  />
-                </n-form-item>
-              </n-gi>
-            </n-grid>
+            <!-- URL Crawling specific settings -->
+            <div v-if="config.taskType === 'url-crawl'">
+              <n-alert v-if="!config.selectedUserId || !selectedUser?.session_id" type="warning" style="margin-bottom: 16px;">
+                <template #header>认证信息检查</template>
+                <div v-if="!config.selectedUserId">请先选择一个小红书账户</div>
+                <div v-else-if="!selectedUser?.session_id">
+                  选中的账户缺少必要的认证信息，请确保在"小红书账户"页面已正确配置 session_id
+                </div>
+              </n-alert>
 
-            <n-grid :cols="2" :x-gap="24">
-              <n-gi>
-                <n-form-item label="列表页延迟(秒)" path="delay">
-                  <div class="slider-with-hint">
-                    <n-slider
-                      v-model:value="config.delayRange"
-                      range
-                      :min="0.5"
-                      :max="15"
-                      :step="0.5"
-                      :format-tooltip="(v) => `${v}s`"
+              <n-form-item label="任务URL" path="taskUrl">
+                <n-input
+                  v-model:value="config.taskUrl"
+                  placeholder="请输入买手任务URL"
+                  type="textarea"
+                  :rows="3"
+                />
+              </n-form-item>
+            </div>
+
+            <!-- Bulk crawling options (hidden for URL crawling) -->
+            <div v-if="config.taskType !== 'url-crawl'">
+              <n-grid :cols="2" :x-gap="24">
+                <n-gi>
+                  <n-form-item label="每页数量" path="pageSize">
+                    <n-input-number
+                      v-model:value="config.pageSize"
+                      :min="1"
+                      :max="50"
+                      style="width: 100%"
                     />
-                    <span class="range-hint">随机延迟: {{ config.delayRange[0] }}s - {{ config.delayRange[1] }}s</span>
-                  </div>
-                </n-form-item>
-              </n-gi>
-              <n-gi>
-                <n-form-item label="详情页延迟(秒)" path="detailDelay">
-                  <div class="slider-with-hint">
-                    <n-slider
-                      v-model:value="config.detailDelayRange"
-                      range
-                      :min="0.5"
-                      :max="15"
-                      :step="0.5"
-                      :format-tooltip="(v) => `${v}s`"
+                  </n-form-item>
+                </n-gi>
+                <n-gi>
+                  <n-form-item label="最大页数" path="maxPages">
+                    <n-input-number
+                      v-model:value="config.maxPages"
+                      :min="1"
+                      :max="100"
+                      placeholder="不限制"
+                      style="width: 100%"
                     />
-                    <span class="range-hint">随机延迟: {{ config.detailDelayRange[0] }}s - {{ config.detailDelayRange[1] }}s</span>
-                  </div>
-                </n-form-item>
-              </n-gi>
-            </n-grid>
+                  </n-form-item>
+                </n-gi>
+              </n-grid>
+            </div>
 
-            <!-- Detail Page Options -->
-            <n-divider title-placement="left">详情页选项</n-divider>
+            <!-- Delay settings (hidden for URL crawling) -->
+            <div v-if="config.taskType !== 'url-crawl'">
+              <n-grid :cols="2" :x-gap="24">
+                <n-gi>
+                  <n-form-item label="列表页延迟(秒)" path="delay">
+                    <div class="slider-with-hint">
+                      <n-slider
+                        v-model:value="config.delayRange"
+                        range
+                        :min="0.5"
+                        :max="15"
+                        :step="0.5"
+                        :format-tooltip="(v) => `${v}s`"
+                      />
+                      <span class="range-hint">随机延迟: {{ config.delayRange[0] }}s - {{ config.delayRange[1] }}s</span>
+                    </div>
+                  </n-form-item>
+                </n-gi>
+                <n-gi>
+                  <n-form-item label="详情页延迟(秒)" path="detailDelay">
+                    <div class="slider-with-hint">
+                      <n-slider
+                        v-model:value="config.detailDelayRange"
+                        range
+                        :min="0.5"
+                        :max="15"
+                        :step="0.5"
+                        :format-tooltip="(v) => `${v}s`"
+                      />
+                      <span class="range-hint">随机延迟: {{ config.detailDelayRange[0] }}s - {{ config.detailDelayRange[1] }}s</span>
+                    </div>
+                  </n-form-item>
+                </n-gi>
+              </n-grid>
+            </div>
 
-            <n-form-item label="详情页模式" path="detailFetchMode">
-              <n-radio-group v-model:value="config.detailFetchMode">
-                <n-radio-button value="none">不抓取</n-radio-button>
-                <n-radio-button value="requests">快速(Requests)</n-radio-button>
-                <n-radio-button value="browser">浏览器(Playwright)</n-radio-button>
-              </n-radio-group>
-            </n-form-item>
+            <!-- Detail Page Options (hidden for URL crawling) -->
+            <div v-if="config.taskType !== 'url-crawl'">
+              <n-divider title-placement="left">详情页选项</n-divider>
 
-            <n-form-item label="功能选项">
-              <n-space>
-                <n-checkbox v-model:checked="config.extractRules">
-                  提取规则卡片
-                </n-checkbox>
-                <n-checkbox v-model:checked="config.saveScreenshots">
-                  保存截图
-                </n-checkbox>
-                <n-checkbox v-model:checked="config.saveToDatabase">
-                  存入数据库
-                </n-checkbox>
-                <n-checkbox v-model:checked="config.cleanOutput">
-                  清理存量数据
-                </n-checkbox>
-                <n-checkbox v-model:checked="config.includeParticipated">
-                  包含已参与任务
-                </n-checkbox>
-                <n-checkbox v-model:checked="config.includeRecruit">
-                  包含招募类任务
-                </n-checkbox>
-                <n-checkbox v-model:checked="config.verbose">
-                  详细日志
-                </n-checkbox>
-              </n-space>
-            </n-form-item>
+              <n-form-item label="详情页模式" path="detailFetchMode">
+                <n-radio-group v-model:value="config.detailFetchMode">
+                  <n-radio-button value="none">不抓取</n-radio-button>
+                  <n-radio-button value="requests">快速(Requests)</n-radio-button>
+                  <n-radio-button value="browser">浏览器(Playwright)</n-radio-button>
+                </n-radio-group>
+              </n-form-item>
+
+              <n-form-item label="功能选项">
+                <n-space>
+                  <n-checkbox v-model:checked="config.extractRules">
+                    提取规则卡片
+                  </n-checkbox>
+                  <n-checkbox v-model:checked="config.saveScreenshots">
+                    保存截图
+                  </n-checkbox>
+                  <n-checkbox v-model:checked="config.saveToDatabase">
+                    存入数据库
+                  </n-checkbox>
+                  <n-checkbox v-model:checked="config.cleanOutput">
+                    清理存量数据
+                  </n-checkbox>
+                  <n-checkbox v-model:checked="config.includeParticipated">
+                    包含已参与任务
+                  </n-checkbox>
+                  <n-checkbox v-model:checked="config.includeRecruit">
+                    包含招募类任务
+                  </n-checkbox>
+                  <n-checkbox v-model:checked="config.verbose">
+                    详细日志
+                  </n-checkbox>
+                </n-space>
+              </n-form-item>
+            </div>
+
+            <!-- URL Crawling specific options -->
+            <div v-if="config.taskType === 'url-crawl'">
+              <n-divider title-placement="left">URL爬取选项</n-divider>
+              
+              <n-form-item label="功能选项">
+                <n-space>
+                  <n-checkbox v-model:checked="config.saveToDatabase" disabled>
+                    存入数据库 (自动启用)
+                  </n-checkbox>
+                  <n-checkbox v-model:checked="config.verbose">
+                    详细日志
+                  </n-checkbox>
+                </n-space>
+              </n-form-item>
+            </div>
 
             <!-- Action Buttons -->
             <div class="action-buttons">
@@ -281,6 +326,7 @@
             </n-card>
           </div>
         </n-tab-pane>
+
       </n-tabs>
     </n-card>
   </div>
@@ -339,6 +385,7 @@ export default defineComponent({
     const config = reactive({
       selectedUserId: null as number | null,
       taskType: 'submission',
+      taskUrl: '', // For URL crawling
       pageSize: 20,
       maxPages: null as number | null,
       delayRange: [2, 4] as [number, number],  // Random delay range for list pages
@@ -381,6 +428,7 @@ export default defineComponent({
     const lastCrawlDuration = ref<string | null>(null);
     const lastCrawlSuccess = ref(true);
     const recentTasks = ref<any[]>([]);
+
 
     // WebSocket for real-time logs
     let ws: WebSocket | null = null;
@@ -440,13 +488,88 @@ export default defineComponent({
     // Fetch recent tasks from backend
     const fetchRecentTasks = async () => {
       try {
-        const response = await fetch('http://localhost:5001/api/advertisement-tasks/?page=1&page_size=10');
-        const data = await response.json();
-        if (data.success) {
-          recentTasks.value = data.data.tasks;
+        const response = await fetch('/api/advertisement-tasks/?limit=10');
+        const result = await response.json();
+        if (result.success) {
+          recentTasks.value = result.data.tasks || [];
         }
       } catch (error) {
-        console.error('Failed to fetch tasks:', error);
+        console.error('Failed to fetch recent tasks:', error);
+      }
+    };
+
+
+    // Handle URL crawling using the main config
+    const handleUrlCrawl = async () => {
+      isRunning.value = true;
+      crawlStatus.value = 'running';
+      clearLogs();
+      addLog('info', '正在从URL爬取任务...');
+
+      const startTime = Date.now();
+
+      try {
+        const selectedUser = users.value.find(u => u.id === config.selectedUserId);
+        if (!selectedUser) {
+          throw new Error('未找到选中的账户信息');
+        }
+
+        // Validate credentials (only session_id is required)
+        if (!selectedUser.session_id) {
+          throw new Error(`账户 ${selectedUser.nickname || selectedUser.username} 缺少必要的认证信息 (session_id)`);
+        }
+
+        addLog('info', `使用账户: ${selectedUser.nickname || selectedUser.username}`);
+        addLog('info', `任务URL: ${config.taskUrl}`);
+        addLog('info', `认证信息: session_id=${selectedUser.session_id ? '已设置' : '未设置'}`)
+
+        const response = await fetch('/api/buyer-tasks/crawl-from-url', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            url: config.taskUrl,
+            session_token: selectedUser.session_id,
+            x_signature: selectedUser.x_signature || ''
+          })
+        });
+
+        const result = await response.json();
+        
+        if (result.success) {
+          crawlStatus.value = 'success';
+          lastCrawlSuccess.value = true;
+          addLog('success', `✅ 爬取成功: ${result.message}`);
+          
+          if (result.data) {
+            addLog('info', `任务标题: ${result.data.title}`);
+            addLog('info', `商品ID: ${result.data.item_id}`);
+            addLog('info', `商品价格: ¥${result.data.item_price || '未知'}`);
+          }
+          
+          message.success(result.message || '爬取成功!');
+          
+          // Reset URL after successful crawl
+          config.taskUrl = '';
+          
+          // Refresh recent tasks
+          await fetchRecentTasks();
+        } else {
+          throw new Error(result.error || '爬取失败');
+        }
+      } catch (error: any) {
+        crawlStatus.value = 'error';
+        lastCrawlSuccess.value = false;
+        const errorMsg = error.message || '爬取失败';
+        addLog('error', `❌ ${errorMsg}`);
+        message.error(errorMsg);
+      } finally {
+        isRunning.value = false;
+        
+        const duration = Math.round((Date.now() - startTime) / 1000);
+        lastCrawlTime.value = new Date().toLocaleString('zh-CN');
+        lastCrawlDuration.value = `${Math.floor(duration / 60)}分${duration % 60}秒`;
       }
     };
 
@@ -553,6 +676,15 @@ export default defineComponent({
         if (result.success) {
           users.value = result.data || [];
           console.log('[Crawler] Loaded users:', users.value.length);
+          console.log('[Crawler] User data structure:', users.value.map(u => ({
+            id: u.id,
+            nickname: u.nickname,
+            username: u.username,
+            user_id: u.user_id,
+            session_token: u.session_token ? 'present' : 'missing',
+            x_signature: u.x_signature ? 'present' : 'missing',
+            allFields: Object.keys(u)
+          })));
           // Auto-select if only one user available
           if (users.value.length === 1 && !config.selectedUserId) {
             config.selectedUserId = users.value[0].id;
@@ -569,6 +701,16 @@ export default defineComponent({
     const startCrawl = async () => {
       if (!config.selectedUserId) {
         message.error('请选择小红书账户');
+        return;
+      }
+
+      // Special handling for URL crawling
+      if (config.taskType === 'url-crawl') {
+        if (!config.taskUrl) {
+          message.error('请输入任务URL');
+          return;
+        }
+        await handleUrlCrawl();
         return;
       }
 
@@ -750,7 +892,8 @@ export default defineComponent({
       saveConfig,
       loadConfig,
       loadUsers,
-      fetchRecentTasks
+      fetchRecentTasks,
+      handleUrlCrawl
     };
   }
 });

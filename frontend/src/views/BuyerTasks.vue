@@ -109,6 +109,13 @@
                 >
                   详细信息
                 </n-button>
+                <n-button
+                  type="error"
+                  size="small"
+                  @click.stop="deleteTask(task)"
+                >
+                  删除
+                </n-button>
               </div>
             </div>
           </n-card>
@@ -146,7 +153,7 @@
       v-model:show="showDetailModal"
       preset="card"
       title="买手任务详情"
-      style="width: 800px; max-height: 80vh; overflow: auto;"
+      style="width: 95vw; max-width: 1200px; max-height: 90vh; overflow: auto;"
       @after-enter="setupKeyboardShortcuts"
       @after-leave="removeKeyboardShortcuts"
     >
@@ -166,28 +173,22 @@
           
           <n-descriptions-item label="商品图片" :span="2">
             <div v-if="viewingTask.small_images && viewingTask.small_images.length > 0">
-              <!-- Image Gallery with Navigation in Preview -->
-              <div style="text-align: center;">
+              <!-- Large Image Preview in Center -->
+              <div style="text-align: center; margin-bottom: 20px;">
                 <n-image-group>
-                  <n-space justify="center">
-                    <n-image
-                      v-for="(img, idx) in viewingTask.small_images"
-                      :key="idx"
-                      :src="img"
-                      :width="idx === currentImageIndex ? 400 : 0"
-                      :height="idx === currentImageIndex ? 400 : 0"
-                      object-fit="contain"
-                      show-toolbar-tooltip
-                      :style="{
-                        borderRadius: '8px',
-                        display: idx === currentImageIndex ? 'inline-block' : 'none'
-                      }"
-                    >
-                      <template v-if="idx !== currentImageIndex" #placeholder>
-                        <div style="width: 0; height: 0;"></div>
-                      </template>
-                    </n-image>
-                  </n-space>
+                  <n-image
+                    :src="viewingTask.small_images[currentImageIndex]"
+                    :width="600"
+                    :height="600"
+                    object-fit="contain"
+                    show-toolbar-tooltip
+                    :style="{
+                      borderRadius: '12px',
+                      boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
+                      border: '1px solid #e0e0e6',
+                      backgroundColor: '#fafafa'
+                    }"
+                  />
                 </n-image-group>
               </div>
               
@@ -254,35 +255,44 @@
                 ⏱️ 请立即粘贴！2秒后将复制下一张图片...
               </n-text>
               
-              <!-- Thumbnail Gallery -->
-              <n-space style="margin-top: 16px; justify-content: center;">
-                <div
-                  v-for="(img, idx) in viewingTask.small_images"
-                  :key="`thumb-${idx}`"
-                  @click="currentImageIndex = idx"
-                  :style="{
-                    cursor: 'pointer',
-                    border: idx === currentImageIndex ? '2px solid #18a058' : '2px solid transparent',
-                    borderRadius: '4px',
-                    padding: '2px',
-                    opacity: idx === currentImageIndex ? 1 : 0.6,
-                    transition: 'all 0.2s'
-                  }"
-                >
-                  <img
-                    :src="img"
-                    width="60"
-                    height="60"
-                    style="object-fit: cover; border-radius: 4px; display: block;"
-                  />
+              <!-- Enhanced Thumbnail Gallery -->
+              <div style="margin-top: 20px;">
+                <n-text depth="2" style="display: block; text-align: center; margin-bottom: 12px; font-size: 14px; font-weight: 500;">
+                  点击缩略图切换查看 ({{ currentImageIndex + 1 }}/{{ viewingTask.small_images.length }})
+                </n-text>
+                <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; max-height: 200px; overflow-y: auto; padding: 8px;">
+                  <div
+                    v-for="(img, idx) in viewingTask.small_images"
+                    :key="`thumb-${idx}`"
+                    @click="currentImageIndex = idx"
+                    :style="{
+                      cursor: 'pointer',
+                      border: idx === currentImageIndex ? '3px solid #18a058' : '2px solid #e0e0e6',
+                      borderRadius: '8px',
+                      padding: '4px',
+                      opacity: idx === currentImageIndex ? 1 : 0.7,
+                      transition: 'all 0.3s ease',
+                      transform: idx === currentImageIndex ? 'scale(1.1)' : 'scale(1)',
+                      backgroundColor: idx === currentImageIndex ? '#f0f9ff' : '#ffffff',
+                      boxShadow: idx === currentImageIndex ? '0 4px 12px rgba(24,160,88,0.2)' : '0 2px 4px rgba(0,0,0,0.1)'
+                    }"
+                  >
+                    <img
+                      :src="img"
+                      width="80"
+                      height="80"
+                      style="object-fit: cover; border-radius: 6px; display: block;"
+                    />
+                  </div>
                 </div>
-              </n-space>
+              </div>
             </div>
             <n-text v-else depth="3">暂无图片</n-text>
           </n-descriptions-item>
         </n-descriptions>
       </div>
     </n-modal>
+
   </div>
 </template>
 
@@ -307,7 +317,11 @@ import {
   NDescriptions,
   NDescriptionsItem,
   NIcon,
-  useMessage
+  useMessage,
+  useDialog,
+  NForm,
+  NFormItem,
+  NInput
 } from 'naive-ui'
 import { Refresh, ChevronBack, ChevronForward, Copy } from '@vicons/ionicons5'
 import axios from 'axios'
@@ -338,6 +352,7 @@ interface BuyerTask {
 }
 
 const message = useMessage()
+const dialog = useDialog()
 const tasks = ref<BuyerTask[]>([])
 const loading = ref(false)
 const showDetailModal = ref(false)
@@ -662,6 +677,44 @@ const setupKeyboardShortcuts = () => {
 
 const removeKeyboardShortcuts = () => {
   window.removeEventListener('keydown', handleKeyPress)
+}
+
+// Delete task function
+const deleteTask = async (task: BuyerTask) => {
+  const confirmed = await new Promise<boolean>((resolve) => {
+    dialog.warning({
+      title: '确认删除',
+      content: `确定要删除任务"${task.task_title}"吗？此操作不可撤销。`,
+      positiveText: '删除',
+      negativeText: '取消',
+      onPositiveClick: () => resolve(true),
+      onNegativeClick: () => resolve(false)
+    })
+  })
+  
+  if (!confirmed) return
+  
+  try {
+    const response = await fetch(`/api/buyer-tasks/${task.id}`, {
+      method: 'DELETE'
+    })
+    
+    const result = await response.json()
+    
+    if (result.success) {
+      message.success(result.message || '删除成功')
+      // Remove task from local list
+      const index = tasks.value.findIndex(t => t.id === task.id)
+      if (index > -1) {
+        tasks.value.splice(index, 1)
+        pagination.value.itemCount--
+      }
+    } else {
+      message.error(result.error || '删除失败')
+    }
+  } catch (error) {
+    message.error('删除失败: ' + (error as Error).message)
+  }
 }
 
 onMounted(() => {
